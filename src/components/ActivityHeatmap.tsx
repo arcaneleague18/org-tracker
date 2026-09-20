@@ -74,13 +74,13 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
 
           {/* Matrix Calibration Scale */}
           <div className="matrix-calibration font-mono">
-            <span className="scale-label">CALIBRATION: [0]</span>
+            <span className="scale-label">Less</span>
             <span className="scale-cell cell-l0"></span>
             <span className="scale-cell cell-l1"></span>
             <span className="scale-cell cell-l2"></span>
             <span className="scale-cell cell-l3"></span>
             <span className="scale-cell cell-l4"></span>
-            <span className="scale-label">[PEAK]</span>
+            <span className="scale-label">More</span>
           </div>
         </div>
 
@@ -182,26 +182,6 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
         .cell-active {
           outline: 2px solid #ffffff;
           z-index: 10;
-        }
-        .cell-l0 {
-          background: #141414;
-          border: 1px solid #1f1f1f;
-        }
-        .cell-l1 {
-          background: #2a2a2a;
-          border: 1px solid #383838;
-        }
-        .cell-l2 {
-          background: #555555;
-          border: 1px solid #6e6e6e;
-        }
-        .cell-l3 {
-          background: #999999;
-          border: 1px solid #b5b5b5;
-        }
-        .cell-l4 {
-          background: var(--accent-hazard);
-          border: 1px solid #ff6666;
         }
         .matrix-calibration {
           display: flex;

@@ -65,7 +65,7 @@ body {
   position: relative;
 }
 
-/* Simulated Analog CRT Scanlines (Dark Mode only) */
+/* Simulated Analog Retro Scanlines (Dark Mode) */
 body::before {
   content: '';
   position: fixed;
@@ -81,8 +81,18 @@ body::before {
   z-index: 999;
 }
 
+/* Horizontal Retro Scanlines in Light Mode */
 body.theme-light::before {
-  display: none; /* Disable scanlines in Swiss Industrial Print */
+  display: block;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 999;
 }
 
 /* Global Grid / Noise Grain */
@@ -282,26 +292,49 @@ body.theme-light .modal-dialog-tactical {
   box-shadow: 0 0 0 1px var(--border-tactical), 0 16px 32px rgba(0, 0, 0, 0.2);
 }
 
-/* Matrix Radar Cells in Light Mode */
+/* Authentic GitHub Contribution Graph Colors (Dark Mode) */
+.cell-l0 {
+  background: #161b22;
+  border: 1px solid #21262d;
+}
+.cell-l1 {
+  background: #0e4429;
+  border: 1px solid #005a2b;
+}
+.cell-l2 {
+  background: #006d32;
+  border: 1px solid #00893c;
+}
+.cell-l3 {
+  background: #26a641;
+  border: 1px solid #2cc44e;
+}
+.cell-l4 {
+  background: #39d353;
+  border: 1px solid #48ff6b;
+  box-shadow: 0 0 6px rgba(57, 211, 83, 0.4);
+}
+
+/* Authentic GitHub Contribution Graph Colors (Light Mode) */
 body.theme-light .cell-l0 {
-  background: #dedcd5;
-  border: 1px solid #d4d2cb;
+  background: #ebedf0;
+  border: 1px solid #dcdfe3;
 }
 body.theme-light .cell-l1 {
-  background: #b8b5ab;
-  border: 1px solid #aaa79d;
+  background: #9be9a8;
+  border: 1px solid #85d993;
 }
 body.theme-light .cell-l2 {
-  background: #757269;
-  border: 1px solid #636158;
+  background: #40c463;
+  border: 1px solid #34b355;
 }
 body.theme-light .cell-l3 {
-  background: #36342e;
-  border: 1px solid #24231e;
+  background: #30a14e;
+  border: 1px solid #278c42;
 }
 body.theme-light .cell-l4 {
-  background: var(--accent-hazard);
-  border: 1px solid #b91c1c;
+  background: #216e39;
+  border: 1px solid #1a582d;
 }
 
 /* Utilitarian Scrollbar */

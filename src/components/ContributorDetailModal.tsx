@@ -134,17 +134,19 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                     <span className="punch-day-code">{dayName}</span>
                     <div className="punch-grid-track">
                       {daySlots.map((slot) => {
-                        const intensity = slot.count === 0 ? 0 : Math.min(1, slot.count / maxPunch);
-                        let bg = '#141414';
-                        if (intensity > 0.75) bg = 'var(--accent-hazard)';
-                        else if (intensity > 0.4) bg = '#888888';
-                        else if (intensity > 0) bg = '#333333';
+                        const getPunchIntensityClass = (count: number) => {
+                          if (count === 0) return 'cell-l0';
+                          const ratio = count / maxPunch;
+                          if (ratio < 0.25) return 'cell-l1';
+                          if (ratio < 0.5) return 'cell-l2';
+                          if (ratio < 0.75) return 'cell-l3';
+                          return 'cell-l4';
+                        };
 
                         return (
                           <div
                             key={slot.hour}
-                            className="punch-square"
-                            style={{ backgroundColor: bg }}
+                            className={`punch-square ${getPunchIntensityClass(slot.count)}`}
                             title={`${dayName} @ ${slot.hour}:00 - ${slot.count} ACTIONS`}
                           />
                         );
@@ -153,12 +155,23 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                   </div>
                 );
               })}
-              <div className="punch-footer-axis">
-                <span>00H</span>
-                <span>06H</span>
-                <span>12H</span>
-                <span>18H</span>
-                <span>23H</span>
+              <div className="punch-calibration-row">
+                <div className="punch-footer-axis">
+                  <span>00H</span>
+                  <span>06H</span>
+                  <span>12H</span>
+                  <span>18H</span>
+                  <span>23H</span>
+                </div>
+                <div className="matrix-calibration font-mono">
+                  <span className="scale-label">Less</span>
+                  <span className="scale-cell cell-l0"></span>
+                  <span className="scale-cell cell-l1"></span>
+                  <span className="scale-cell cell-l2"></span>
+                  <span className="scale-cell cell-l3"></span>
+                  <span className="scale-cell cell-l4"></span>
+                  <span className="scale-label">More</span>
+                </div>
               </div>
             </div>
           </div>
@@ -364,13 +377,40 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           height: 14px;
           cursor: pointer;
         }
-        .punch-footer-axis {
+        .punch-square:hover {
+          outline: 2px solid var(--text-phosphor);
+          z-index: 5;
+        }
+        .punch-calibration-row {
           display: flex;
+          align-items: center;
           justify-content: space-between;
           padding-left: 36px;
+          margin-top: 0.6rem;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+        .punch-footer-axis {
+          display: flex;
+          gap: 2.5rem;
           font-size: 0.6rem;
           color: var(--text-ghost);
-          margin-top: 0.35rem;
+        }
+        .matrix-calibration {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          font-size: 0.65rem;
+          color: var(--text-dim);
+        }
+        .scale-cell {
+          width: 10px;
+          height: 10px;
+          display: inline-block;
+        }
+        .scale-label {
+          padding: 0 0.2rem;
+          font-size: 0.65rem;
         }
 
         .action-log-stream {
