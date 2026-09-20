@@ -127,6 +127,7 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({ overview }) => {
         }
         .telemetry-serial {
           font-size: 0.65rem;
+          font-weight: 600;
           color: var(--text-ghost);
           letter-spacing: 0.1em;
         }
@@ -208,11 +209,12 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({ overview }) => {
         .module-footer {
           display: flex;
           flex-direction: column;
-          gap: 0.2rem;
-          font-size: 0.65rem;
+          gap: 0.25rem;
+          font-size: 0.68rem;
+          font-weight: 500;
           color: var(--text-dim);
           border-top: 1px solid var(--border-tactical);
-          padding-top: 0.4rem;
+          padding-top: 0.45rem;
         }
         .ascii-meter {
           color: var(--accent-radar);
@@ -221,7 +223,9 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({ overview }) => {
         }
         .sub-data {
           color: var(--text-ghost);
-          font-size: 0.6rem;
+          font-size: 0.63rem;
+          font-weight: 600;
+          letter-spacing: 0.02em;
         }
 
         @media (max-width: 1200px) {

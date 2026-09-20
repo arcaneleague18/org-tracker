@@ -8,7 +8,6 @@ import {
   GitHubCredentials
 } from './types';
 import { cacheService } from './services/cacheService';
-import { mockContributors, mockRepositories, mockOrgOverview } from './services/mockData';
 import { githubApi, getLatestRateLimit, RawCommit, RawPull, RawReview, RawIssue } from './services/githubApi';
 import { aggregateOrgData } from './services/dataAggregator';
 import { Header } from './components/Header';
@@ -20,15 +19,35 @@ import { RepoBreakdown } from './components/RepoBreakdown';
 import { SettingsModal } from './components/SettingsModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 
+const emptyOrgOverview: OrgOverview = {
+  orgName: 'Move2Move',
+  totalContributors: 0,
+  totalCommits: 0,
+  totalPrs: 0,
+  totalPrsMerged: 0,
+  totalReviews: 0,
+  totalIssues: 0,
+  totalLinesAdded: 0,
+  totalLinesDeleted: 0,
+  reviewParticipationRate: 0,
+  activeReposCount: 0,
+  dailyActivity: []
+};
+
 export const App: React.FC = () => {
   const [credentials, setCredentials] = useState<GitHubCredentials>(() => cacheService.getCredentials());
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => cacheService.isDemoMode());
   const [dateRange, setDateRange] = useState<DateRangeOption>('90d');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => cacheService.getTheme());
 
-  const [contributors, setContributors] = useState<ContributorStats[]>([]);
-  const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
-  const [overview, setOverview] = useState<OrgOverview>(mockOrgOverview);
+  const [contributors, setContributors] = useState<ContributorStats[]>(() => {
+    return cacheService.getCachedData()?.contributors ?? [];
+  });
+  const [repositories, setRepositories] = useState<RepositorySummary[]>(() => {
+    return cacheService.getCachedData()?.repositories ?? [];
+  });
+  const [overview, setOverview] = useState<OrgOverview>(() => {
+    return cacheService.getCachedData()?.overview ?? emptyOrgOverview;
+  });
 
   const [selectedContributor, setSelectedContributor] = useState<ContributorStats | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -50,26 +69,6 @@ export const App: React.FC = () => {
     document.body.classList.toggle('theme-light', theme === 'light');
   }, [theme]);
 
-  // Load Initial Data (Cached or Demo)
-  useEffect(() => {
-    if (isDemoMode) {
-      setContributors(mockContributors);
-      setRepositories(mockRepositories);
-      setOverview(mockOrgOverview);
-    } else {
-      const cached = cacheService.getCachedData();
-      if (cached) {
-        setContributors(cached.contributors);
-        setRepositories(cached.repositories);
-        setOverview(cached.overview);
-      } else {
-        setContributors(mockContributors);
-        setRepositories(mockRepositories);
-        setOverview(mockOrgOverview);
-      }
-    }
-  }, [isDemoMode]);
-
   // Date Range Filtering computation
   const filteredDailyPoints = useMemo(() => {
     let daysToInclude = 90;
@@ -84,40 +83,6 @@ export const App: React.FC = () => {
 
   // Live Sync Trigger
   const handleTriggerSync = useCallback(async () => {
-    if (isDemoMode) {
-      setSyncStatus({
-        isSyncing: true,
-        phase: 'members',
-        currentRepo: '',
-        progress: 15,
-        rateLimitRemaining: 4982,
-        rateLimitReset: null,
-        lastSyncedAt: syncStatus.lastSyncedAt,
-        errorMessage: null
-      });
-
-      await new Promise((r) => setTimeout(r, 500));
-      setSyncStatus((prev) => ({ ...prev, phase: 'repos', progress: 40 }));
-      await new Promise((r) => setTimeout(r, 500));
-      setSyncStatus((prev) => ({ ...prev, phase: 'commits', currentRepo: 'move2move-core', progress: 70 }));
-      await new Promise((r) => setTimeout(r, 500));
-      setSyncStatus((prev) => ({ ...prev, phase: 'aggregating', progress: 95 }));
-      await new Promise((r) => setTimeout(r, 300));
-
-      const now = new Date().toISOString();
-      setSyncStatus({
-        isSyncing: false,
-        phase: 'done',
-        currentRepo: '',
-        progress: 100,
-        rateLimitRemaining: 4975,
-        rateLimitReset: null,
-        lastSyncedAt: now,
-        errorMessage: null
-      });
-      return;
-    }
-
     if (!credentials.token) {
       setIsSettingsOpen(true);
       return;
@@ -240,13 +205,14 @@ export const App: React.FC = () => {
         errorMessage: e.message || 'SYNC_FAILURE'
       }));
     }
-  }, [credentials, isDemoMode, dateRange, syncStatus.lastSyncedAt]);
+  }, [credentials, dateRange, syncStatus.lastSyncedAt]);
 
-  const handleToggleDemoMode = () => {
-    const nextVal = !isDemoMode;
-    setIsDemoMode(nextVal);
-    cacheService.setDemoMode(nextVal);
-  };
+  // Auto-sync on load if token is available and no cached data exists
+  useEffect(() => {
+    if (credentials.token && contributors.length === 0 && !syncStatus.isSyncing) {
+      handleTriggerSync();
+    }
+  }, [credentials.token]);
 
   const handleToggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -257,16 +223,20 @@ export const App: React.FC = () => {
   const handleSaveCredentials = (newCreds: GitHubCredentials) => {
     setCredentials(newCreds);
     cacheService.saveCredentials(newCreds);
-    setIsDemoMode(false);
-    cacheService.setDemoMode(false);
+    if (newCreds.token && contributors.length === 0) {
+      setTimeout(() => {
+        handleTriggerSync();
+      }, 100);
+    }
   };
 
   const handleClearCredentials = () => {
     setCredentials({ token: '', org: 'Move2Move' });
     cacheService.clearCredentials();
     cacheService.clearCache();
-    setIsDemoMode(true);
-    cacheService.setDemoMode(true);
+    setContributors([]);
+    setRepositories([]);
+    setOverview(emptyOrgOverview);
   };
 
   const handleExportCsv = () => {
@@ -320,8 +290,6 @@ export const App: React.FC = () => {
       {/* Tactical HUD Header */}
       <Header
         orgName={credentials.org || 'Move2Move'}
-        isDemoMode={isDemoMode}
-        onToggleDemoMode={handleToggleDemoMode}
         dateRange={dateRange}
         onChangeDateRange={setDateRange}
         syncStatus={syncStatus}
@@ -335,6 +303,25 @@ export const App: React.FC = () => {
 
       {/* Main Tactical Canvas */}
       <main className="container main-tactical-content">
+        {/* Token Required Banner */}
+        {!credentials.token && (
+          <div className="tactical-unconfigured-banner font-mono">
+            <div className="unconfigured-left">
+              <span className="unconfigured-tag">[ RESTRICTED_ACCESS // TOKEN_REQUIRED ]</span>
+              <p className="unconfigured-text">
+                Move2Move organization repositories are private. Configure a GitHub Personal Access Token (PAT) with repo and read:org permissions to index live commits, PRs, and code audits.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="btn-tactical btn-tactical-hazard unconfigured-btn"
+            >
+              [ CONFIGURE_PAT_CREDENTIALS ]
+            </button>
+          </div>
+        )}
+
         {/* Error Alert Bar */}
         {errorMessage && (
           <div className="tactical-error-banner font-mono">
@@ -394,14 +381,6 @@ export const App: React.FC = () => {
             <span className="footer-pipe">|</span>
             <button
               type="button"
-              onClick={handleToggleDemoMode}
-              className="footer-link-tactical"
-            >
-              {isDemoMode ? '[SWITCH_LIVE]' : '[SWITCH_SIM]'}
-            </button>
-            <span className="footer-pipe">|</span>
-            <button
-              type="button"
               onClick={handleToggleTheme}
               className="footer-link-tactical"
             >
@@ -440,6 +419,39 @@ export const App: React.FC = () => {
         }
         .main-tactical-content {
           flex: 1;
+        }
+        .tactical-unconfigured-banner {
+          margin: 1.5rem 0 0.5rem 0;
+          background: var(--bg-panel);
+          border: 1px solid var(--accent-hazard);
+          border-left-width: 4px;
+          padding: 1.25rem 1.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 1.5rem;
+        }
+        .unconfigured-left {
+          flex: 1;
+          min-width: 260px;
+        }
+        .unconfigured-tag {
+          color: var(--accent-hazard);
+          font-weight: 700;
+          font-size: 0.85rem;
+          display: block;
+          margin-bottom: 0.35rem;
+        }
+        .unconfigured-text {
+          font-size: 0.78rem;
+          color: var(--text-dim);
+          line-height: 1.5;
+          margin: 0;
+        }
+        .unconfigured-btn {
+          white-space: nowrap;
+          padding: 0.6rem 1.2rem;
         }
         .tactical-error-banner {
           margin: 1.25rem 0 0.5rem 0;

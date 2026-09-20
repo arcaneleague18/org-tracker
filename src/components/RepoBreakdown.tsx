@@ -54,58 +54,83 @@ export const RepoBreakdown: React.FC<RepoBreakdownProps> = ({ repositories }) =>
         )}
       </div>
 
-      <div className="tactical-grid repos-matrix-grid with-crosshairs font-mono">
-        {filteredRepos.map((repo) => (
-          <div key={repo.name} className="tactical-cell repo-module">
-            <div className="repo-module-top">
-              <div className="repo-name-group">
-                <span className="repo-macro-name">{repo.name}</span>
-                {repo.isPrivate && (
-                  <span className="repo-private-tag">
-                    <LockIcon size={10} color="#888888" />
-                    [RESTRICTED]
+      {filteredRepos.length === 0 ? (
+        <div className="tactical-empty-box with-crosshairs font-mono">
+          <p className="empty-title">[ STANDBY // NO_REPOSITORIES_INDEXED ]</p>
+          <p className="empty-desc">CONFIGURE GITHUB PERSONAL ACCESS TOKEN TO ENUMERATE AND MONITOR ORGANIZATION REPOSITORIES.</p>
+        </div>
+      ) : (
+        <div className="tactical-grid repos-matrix-grid with-crosshairs font-mono">
+          {filteredRepos.map((repo) => (
+            <div key={repo.name} className="tactical-cell repo-module">
+              <div className="repo-module-top">
+                <div className="repo-name-group">
+                  <span className="repo-macro-name">{repo.name}</span>
+                  {repo.isPrivate && (
+                    <span className="repo-private-tag">
+                      <LockIcon size={10} color="#888888" />
+                      [RESTRICTED]
+                    </span>
+                  )}
+                </div>
+                {repo.language && (
+                  <span className="repo-lang-tag">
+                    [STACK: {repo.language.toUpperCase()}]
                   </span>
                 )}
               </div>
-              {repo.language && (
-                <span className="repo-lang-tag">
-                  [STACK: {repo.language.toUpperCase()}]
-                </span>
-              )}
-            </div>
 
-            <p className="repo-desc-text">
-              {repo.description || 'NO SPECIFICATION PROVIDED IN REPO METADATA.'}
-            </p>
+              <p className="repo-desc-text">
+                {repo.description || 'NO SPECIFICATION PROVIDED IN REPO METADATA.'}
+              </p>
 
-            <div className="repo-telemetry-payload">
-              <div className="payload-stat">
-                <span className="payload-label">COMMITS:</span>
-                <span className="payload-value">{repo.commitsCount}</span>
-              </div>
-              <div className="payload-stat">
-                <span className="payload-label">PRS:</span>
-                <span className="payload-value">{repo.prsCount}</span>
-              </div>
-            </div>
-
-            {repo.topContributors.length > 0 && (
-              <div className="repo-maintainers-manifest">
-                <span className="manifest-title">CORE_OPERATIVES:</span>
-                <div className="maintainers-cluster">
-                  {repo.topContributors.map((c) => (
-                    <span key={c.login} className="maintainer-code">
-                      @{c.login} [{c.commits}]
-                    </span>
-                  ))}
+              <div className="repo-telemetry-payload">
+                <div className="payload-stat">
+                  <span className="payload-label">COMMITS:</span>
+                  <span className="payload-value">{repo.commitsCount}</span>
+                </div>
+                <div className="payload-stat">
+                  <span className="payload-label">PRS:</span>
+                  <span className="payload-value">{repo.prsCount}</span>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+
+              {repo.topContributors.length > 0 && (
+                <div className="repo-maintainers-manifest">
+                  <span className="manifest-title">CORE_OPERATIVES:</span>
+                  <div className="maintainers-cluster">
+                    {repo.topContributors.map((c) => (
+                      <span key={c.login} className="maintainer-code">
+                        @{c.login} [{c.commits}]
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <style>{`
+        .tactical-empty-box {
+          background: var(--bg-panel);
+          border: 1px dashed var(--border-tactical);
+          padding: 3rem 2rem;
+          text-align: center;
+          margin-bottom: 2rem;
+        }
+        .empty-title {
+          color: var(--accent-hazard);
+          font-weight: 700;
+          font-size: 0.95rem;
+          margin: 0 0 0.5rem 0;
+        }
+        .empty-desc {
+          color: var(--text-dim);
+          font-size: 0.75rem;
+          margin: 0;
+        }
         .repos-tactical {
           margin-bottom: 4rem;
         }

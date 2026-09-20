@@ -9,8 +9,8 @@
   --bg-elevated: #1a1a1a;
 
   --text-phosphor: #eaeaea;
-  --text-dim: #888888;
-  --text-ghost: #444444;
+  --text-dim: #a0a0a0;         /* Clear secondary telemetry */
+  --text-ghost: #6e6e6e;       /* Crisper subtexts & structural telemetry */
 
   --accent-hazard: #ff2a2a;
   --accent-hazard-dim: rgba(255, 42, 42, 0.15);
@@ -30,8 +30,8 @@ body.theme-light {
   --bg-elevated: #dfdcd5;      /* Elevated paper block */
 
   --text-phosphor: #0a0a0a;    /* Carbon ink */
-  --text-dim: #4f4d47;         /* Medium ink */
-  --text-ghost: #8c8982;       /* Faint structural print */
+  --text-dim: #383630;         /* Crisp technical carbon */
+  --text-ghost: #5c5952;       /* Enhanced contrast subtext for high legibility */
 
   --accent-hazard: #e61919;    /* Aviation/Hazard red */
   --accent-hazard-dim: rgba(230, 25, 25, 0.12);
@@ -186,6 +186,13 @@ body.theme-light::after {
   color: var(--text-dim);
   border-left: 2px solid var(--accent-hazard);
   padding-left: 0.5rem;
+}
+
+.telemetry-serial {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-ghost);
+  letter-spacing: 0.1em;
 }
 
 /* Tactical Mechanical Buttons */

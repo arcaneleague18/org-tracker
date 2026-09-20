@@ -4,7 +4,6 @@ const TOKEN_KEY = 'm2m_github_token';
 const ORG_KEY = 'm2m_github_org';
 const CACHE_DATA_KEY = 'm2m_cached_dashboard_data';
 const CACHE_TIMESTAMP_KEY = 'm2m_cache_timestamp';
-const DEMO_MODE_KEY = 'm2m_demo_mode_active';
 
 export interface CachedDashboardPayload {
   contributors: ContributorStats[];
@@ -27,19 +26,6 @@ export const cacheService = {
 
   clearCredentials(): void {
     localStorage.removeItem(TOKEN_KEY);
-  },
-
-  isDemoMode(): boolean {
-    const stored = localStorage.getItem(DEMO_MODE_KEY);
-    // Default to true if no token is saved yet
-    if (stored === null) {
-      return !localStorage.getItem(TOKEN_KEY);
-    }
-    return stored === 'true';
-  },
-
-  setDemoMode(enabled: boolean): void {
-    localStorage.setItem(DEMO_MODE_KEY, String(enabled));
   },
 
   getCachedData(): CachedDashboardPayload | null {

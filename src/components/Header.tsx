@@ -1,11 +1,9 @@
 import React from 'react';
 import { DateRangeOption, SyncStatus } from '../types';
-import { RefreshIcon, SettingsIcon, LockIcon, EyeIcon, DownloadIcon } from './Icons';
+import { RefreshIcon, SettingsIcon, LockIcon, DownloadIcon } from './Icons';
 
 interface HeaderProps {
   orgName: string;
-  isDemoMode: boolean;
-  onToggleDemoMode: () => void;
   dateRange: DateRangeOption;
   onChangeDateRange: (range: DateRangeOption) => void;
   syncStatus: SyncStatus;
@@ -19,8 +17,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   orgName,
-  isDemoMode,
-  onToggleDemoMode,
   dateRange,
   onChangeDateRange,
   syncStatus,
@@ -49,15 +45,15 @@ export const Header: React.FC<HeaderProps> = ({
                   <LockIcon size={10} color="#888888" />
                   [ SEC_CLASS: PRIVATE ]
                 </span>
-                {isDemoMode ? (
-                  <span className="tactical-tag tag-demo">
-                    <EyeIcon size={10} color="#ff2a2a" />
-                    [ MODE: SIMULATION ]
-                  </span>
-                ) : (
+                {hasToken ? (
                   <span className="tactical-tag tag-live">
                     <span className="radar-square" />
                     [ TELEMETRY: ACTIVE ]
+                  </span>
+                ) : (
+                  <span className="tactical-tag tag-unconfigured">
+                    <span className="radar-square-offline" />
+                    [ STANDBY // UNCONFIGURED ]
                   </span>
                 )}
               </div>
@@ -99,16 +95,6 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="tactical-actions-grid">
               <button
                 type="button"
-                onClick={onToggleDemoMode}
-                className="btn-tactical"
-                title={isDemoMode ? "Connect to live GitHub REST endpoint" : "Toggle simulated test harness"}
-              >
-                <EyeIcon size={12} />
-                <span>{isDemoMode ? 'LIVE_MODE' : 'SIMULATION'}</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={onExportCsv}
                 className="btn-tactical"
                 title="Dump dataset to CSV report"
@@ -120,8 +106,8 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onTriggerSync}
-                disabled={syncStatus.isSyncing || (!hasToken && !isDemoMode)}
-                className={`btn-tactical ${!isDemoMode && hasToken ? 'btn-tactical-hazard' : ''}`}
+                disabled={syncStatus.isSyncing || !hasToken}
+                className={`btn-tactical ${hasToken ? 'btn-tactical-hazard' : ''}`}
                 title="Poll GitHub API for latest commits & PRs"
               >
                 <RefreshIcon size={12} spinning={syncStatus.isSyncing} />
@@ -154,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="telemetry-register-bar">
           <div className="register-item">
             <span className="reg-key">STATUS:</span>
-            <span className="reg-val">{isDemoMode ? 'SIMULATED_DATA' : 'CONNECTED_TO_ENDPOINT'}</span>
+            <span className="reg-val">{hasToken ? 'CONNECTED_TO_ENDPOINT' : 'TOKEN_REQUIRED'}</span>
           </div>
           <div className="register-item">
             <span className="reg-key">LAST_POLL:</span>
@@ -172,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
           )}
-          {!hasToken && !isDemoMode && (
+          {!hasToken && (
             <div className="register-item alert-register">
               <span className="alert-blink">!</span>
               <span>PAT_KEY_MISSING // ACCESS_RESTRICTED</span>
@@ -250,9 +236,14 @@ export const Header: React.FC<HeaderProps> = ({
         .tag-private {
           color: var(--text-dim);
         }
-        .tag-demo {
+        .tag-unconfigured {
           color: var(--accent-hazard);
           border-color: var(--accent-hazard);
+        }
+        .radar-square-offline {
+          width: 6px;
+          height: 6px;
+          background: var(--accent-hazard);
         }
         .tag-live {
           color: var(--accent-radar);
@@ -332,6 +323,8 @@ export const Header: React.FC<HeaderProps> = ({
         }
         .reg-key {
           color: var(--text-ghost);
+          font-weight: 600;
+          letter-spacing: 0.02em;
         }
         .reg-val {
           color: var(--text-phosphor);
