@@ -8,16 +8,21 @@ interface SettingsModalProps {
   onSave: (credentials: GitHubCredentials) => void;
   onClear: () => void;
   onClose: () => void;
+  envExcludedRepos?: string[];
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   initialCredentials,
   onSave,
   onClear,
-  onClose
+  onClose,
+  envExcludedRepos = []
 }) => {
   const [token, setToken] = useState(initialCredentials.token);
   const [org, setOrg] = useState(initialCredentials.org || 'Move2Move');
+  const [excludedText, setExcludedText] = useState(() => {
+    return (initialCredentials.excludedRepos || []).join(', ');
+  });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -60,12 +65,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    onSave({ token: token.trim(), org: org.trim() });
+    const parsedExcluded = excludedText
+      .split(',')
+      .map((s) => s.replace(/["']/g, '').trim())
+      .filter(Boolean);
+    onSave({
+      token: token.trim(),
+      org: org.trim(),
+      excludedRepos: parsedExcluded
+    });
     onClose();
   };
 
   const handleClear = () => {
     setToken('');
+    setExcludedText('');
     setTestResult(null);
     onClear();
   };
@@ -128,6 +142,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="field-help">
                 REQUIRED PRIVILEGES: <code>repo</code> (PRIVATE_REPOSITORIES), <code>read:org</code> (TEAM_ROSTER), <code>read:user</code>
               </span>
+            </div>
+
+            <div className="tactical-field-group">
+              <div className="field-label-row">
+                <label className="field-label" htmlFor="excluded-repos">
+                  [ EXCLUDED_REPOSITORIES_FILTER ]
+                </label>
+                {envExcludedRepos.length > 0 && (
+                  <span className="env-badge font-mono">[.ENV ACTIVE]</span>
+                )}
+              </div>
+              <input
+                id="excluded-repos"
+                type="text"
+                value={excludedText}
+                onChange={(e) => setExcludedText(e.target.value)}
+                placeholder="demo-repository, .github, test-repo"
+                className="tactical-text-input"
+              />
+              <span className="field-help">
+                COMMA-SEPARATED REPOSITORY NAMES TO EXCLUDE FROM METRICS &amp; TELEMETRY. CAN ALSO BE SET VIA <code>VITE_EXCLUDED_REPOS</code> IN <code>.env</code>.
+              </span>
+              {envExcludedRepos.length > 0 && (
+                <span className="field-env-active font-mono">
+                  CONFIGURED IN .ENV: {envExcludedRepos.join(', ')}
+                </span>
+              )}
             </div>
 
             {/* Protocol Manual */}
@@ -255,6 +296,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           display: flex;
           flex-direction: column;
           gap: 0.35rem;
+        }
+        .field-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .env-badge {
+          font-size: 0.6rem;
+          color: var(--accent-radar);
+          border: 1px solid var(--accent-radar);
+          padding: 0.1rem 0.4rem;
+          letter-spacing: 0.05em;
+        }
+        .field-env-active {
+          display: block;
+          font-size: 0.65rem;
+          color: var(--accent-radar);
+          margin-top: 0.2rem;
         }
         .field-label {
           font-size: 0.68rem;

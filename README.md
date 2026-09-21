@@ -35,11 +35,30 @@ A high-performance, visually refined engineering analytics dashboard built to tr
    - List of top contributors for each repository.
 
 6. **Client-Side Security & Rate-Limit Optimization**:
-   - Token is stored strictly in your browser's local storage.
+   - Token is stored strictly in your browser's local storage or loaded via `.env`.
    - Direct browser-to-GitHub REST API communication (no intermediate server).
    - LocalStorage caching preserves API quotas.
-   - Built-in Demo Mode allows exploring simulated Move2Move data immediately.
+   - Live telemetry pipeline tracks rate limit consumption in real time.
+   - Filter out repositories you do not want tracked via `.env` (`VITE_EXCLUDED_REPOS`).
    - Export full contributor report to CSV for standups or reviews.
+
+---
+
+## Environment Variables & Repository Exclusions
+
+You can configure organization settings and exclude specific repositories directly via a `.env` file in the project root:
+
+```env
+# Target GitHub Organization & Authentication
+VITE_GITHUB_ORG=Move2Move
+VITE_GITHUB_TOKEN=ghp_your_classic_personal_access_token_here
+
+# Exclude specific repositories from tracking (comma-separated names)
+VITE_EXCLUDED_REPOS=demo-repository, .github, test-sandbox
+```
+
+- **`VITE_EXCLUDED_REPOS`**: Comma-separated list of repository names to ignore. Excluded repositories are not fetched from GitHub, saving API rate limit quota, and their commits and PRs are excluded from contributor impact scores, overview metrics, and repository manifests.
+- **In-App Management**: You can also review active `.env` exclusions or add custom exclusions directly from the **CONFIG_PAT** settings dialog.
 
 ---
 
@@ -80,10 +99,11 @@ Because repositories in Move2Move are private, a GitHub Personal Access Token (C
 7. **Important**: If Move2Move uses SAML Single Sign-On, click **Configure SSO** next to your generated token and click **Authorize** for the `Move2Move` organization.
 
 ### Connecting in the Dashboard:
-1. In the dashboard header, click **Settings**.
-2. Paste your token in the **Classic Personal Access Token** field.
-3. Click **Test Connection** to verify your authentication and check your remaining API rate limit.
-4. Click **Save & Connect**. The dashboard will exit Demo Mode and automatically query Move2Move.
+1. In the dashboard header, click **CONFIG_PAT**.
+2. Paste your token in the **Classic Personal Access Token** field (or provide `VITE_GITHUB_TOKEN` in `.env`).
+3. Optionally specify repositories to exclude in **Excluded Repositories Filter**.
+4. Click **Test Connection** to verify your authentication and check your remaining API rate limit.
+5. Click **Save & Connect**. The dashboard will automatically query and index Move2Move.
 
 ---
 

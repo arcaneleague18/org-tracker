@@ -99,4 +99,5 @@ export interface SyncStatus {
 export interface GitHubCredentials {
   token: string;
   org: string;
+  excludedRepos?: string[];
 }

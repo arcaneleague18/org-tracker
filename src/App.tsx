@@ -39,11 +39,20 @@ export const App: React.FC = () => {
   const [dateRange, setDateRange] = useState<DateRangeOption>('90d');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => cacheService.getTheme());
 
+  const activeExcludedRepos = useMemo(() => {
+    return credentials.excludedRepos || cacheService.getExcludedRepos();
+  }, [credentials.excludedRepos]);
+
   const [contributors, setContributors] = useState<ContributorStats[]>(() => {
-    return cacheService.getCachedData()?.contributors ?? [];
+    const raw = cacheService.getCachedData()?.contributors ?? [];
+    return raw.map((c) => ({
+      ...c,
+      repositories: c.repositories.filter((r) => !cacheService.isRepoExcluded(r.name))
+    }));
   });
   const [repositories, setRepositories] = useState<RepositorySummary[]>(() => {
-    return cacheService.getCachedData()?.repositories ?? [];
+    const raw = cacheService.getCachedData()?.repositories ?? [];
+    return raw.filter((r) => !cacheService.isRepoExcluded(r.name));
   });
   const [overview, setOverview] = useState<OrgOverview>(() => {
     return cacheService.getCachedData()?.overview ?? emptyOrgOverview;
@@ -114,7 +123,9 @@ export const App: React.FC = () => {
       }));
 
       // 2. Fetch Repositories
-      const repos = await githubApi.fetchOrgRepos(token, org);
+      const allRepos = await githubApi.fetchOrgRepos(token, org);
+      const excludedList = credentials.excludedRepos || cacheService.getExcludedRepos();
+      const repos = allRepos.filter((r) => !cacheService.isRepoExcluded(r.name, excludedList));
       const commitsByRepo: Record<string, RawCommit[]> = {};
       const pullsByRepo: Record<string, RawPull[]> = {};
       const reviewsByRepoPull: Record<string, RawReview[]> = {};
@@ -207,10 +218,12 @@ export const App: React.FC = () => {
     }
   }, [credentials, dateRange, syncStatus.lastSyncedAt]);
 
-  // Auto-sync on load if token is available and no cached data exists
+  // Auto-sync on load if token is available and (no cached data exists OR excluded repos changed)
   useEffect(() => {
-    if (credentials.token && contributors.length === 0 && !syncStatus.isSyncing) {
-      handleTriggerSync();
+    if (credentials.token && !syncStatus.isSyncing) {
+      if (contributors.length === 0 || cacheService.hasExcludedReposChanged()) {
+        handleTriggerSync();
+      }
     }
   }, [credentials.token]);
 
@@ -223,7 +236,7 @@ export const App: React.FC = () => {
   const handleSaveCredentials = (newCreds: GitHubCredentials) => {
     setCredentials(newCreds);
     cacheService.saveCredentials(newCreds);
-    if (newCreds.token && contributors.length === 0) {
+    if (newCreds.token) {
       setTimeout(() => {
         handleTriggerSync();
       }, 100);
@@ -299,6 +312,7 @@ export const App: React.FC = () => {
         hasToken={Boolean(credentials.token)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        excludedCount={activeExcludedRepos.length}
       />
 
       {/* Main Tactical Canvas */}
@@ -405,6 +419,7 @@ export const App: React.FC = () => {
           onSave={handleSaveCredentials}
           onClear={handleClearCredentials}
           onClose={() => setIsSettingsOpen(false)}
+          envExcludedRepos={cacheService.getEnvExcludedRepos()}
         />
       )}
 

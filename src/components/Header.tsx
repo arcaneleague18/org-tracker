@@ -13,6 +13,7 @@ interface HeaderProps {
   hasToken: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  excludedCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,7 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onExportCsv,
   hasToken,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  excludedCount = 0
 }) => {
   return (
     <header className="header-tactical">
@@ -155,6 +157,14 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="reg-key">API_QUOTA_REGISTER:</span>
               <span className="reg-val font-mono quota-highlight">
                 {syncStatus.rateLimitRemaining} / 5000 CALLS
+              </span>
+            </div>
+          )}
+          {excludedCount > 0 && (
+            <div className="register-item">
+              <span className="reg-key">FILTER_EXCLUSIONS:</span>
+              <span className="reg-val font-mono quota-highlight">
+                [{excludedCount} REPOS EXCLUDED]
               </span>
             </div>
           )}
