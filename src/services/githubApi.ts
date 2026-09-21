@@ -89,17 +89,24 @@ let lastRateLimit: RateLimitStatus | null = null;
 
 export const getLatestRateLimit = (): RateLimitStatus | null => lastRateLimit;
 
-async function requestGitHub<T>(url: string, token: string): Promise<T> {
+/**
+ * Requests GitHub API via backend serverless proxy (/api/github).
+ * If a custom client override token is present in localStorage, it is passed via x-github-token.
+ * Otherwise, the serverless proxy uses the secure server-side GITHUB_TOKEN.
+ */
+async function requestGitHub<T>(apiPath: string, token?: string): Promise<T> {
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28'
+    Accept: 'application/vnd.github+json'
   };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  const cleanToken = token ? token.trim() : '';
+  if (cleanToken) {
+    headers['x-github-token'] = cleanToken;
   }
 
-  const response = await fetch(url, { headers });
+  // Call the secure backend proxy
+  const proxyUrl = `/api/github?path=${encodeURIComponent(apiPath)}`;
+  const response = await fetch(proxyUrl, { headers });
 
   const remainingHeader = response.headers.get('x-ratelimit-remaining');
   const limitHeader = response.headers.get('x-ratelimit-limit');
@@ -125,7 +132,10 @@ async function requestGitHub<T>(url: string, token: string): Promise<T> {
     }
 
     if (response.status === 401) {
-      throw new GitHubApiError('Invalid GitHub Personal Access Token. Please check token permissions.', 401);
+      throw new GitHubApiError(
+        `Authentication Failed (401): ${errorDetail || 'Invalid token or missing GITHUB_TOKEN on server.'}`,
+        401
+      );
     }
     if (response.status === 403) {
       if (lastRateLimit && lastRateLimit.remaining === 0) {
@@ -135,7 +145,7 @@ async function requestGitHub<T>(url: string, token: string): Promise<T> {
         );
       }
       throw new GitHubApiError(
-        `Access forbidden (403): ${errorDetail}. Ensure token has 'repo' and 'read:org' permissions and SAML SSO is authorized if enabled.`,
+        `Access forbidden (403): ${errorDetail}. Ensure token has 'repo' and 'read:org' permissions.`,
         403
       );
     }
@@ -152,9 +162,10 @@ async function requestGitHub<T>(url: string, token: string): Promise<T> {
 }
 
 export const githubApi = {
-  async testConnection(token: string, org: string): Promise<{ userLogin: string; orgName: string; rateLimit: RateLimitStatus | null }> {
-    const user = await requestGitHub<{ login: string }>('https://api.github.com/user', token);
-    const orgData = await requestGitHub<{ login: string; name?: string }>(`https://api.github.com/orgs/${org}`, token);
+  async testConnection(token: string | undefined, org: string): Promise<{ userLogin: string; orgName: string; rateLimit: RateLimitStatus | null }> {
+    const safeOrg = encodeURIComponent(org.trim());
+    const user = await requestGitHub<{ login: string }>('/user', token);
+    const orgData = await requestGitHub<{ login: string; name?: string }>(`/orgs/${safeOrg}`, token);
     return {
       userLogin: user.login,
       orgName: orgData.name || orgData.login,
@@ -162,21 +173,25 @@ export const githubApi = {
     };
   },
 
-  async fetchOrgMembers(token: string, org: string): Promise<RawMember[]> {
-    return requestGitHub<RawMember[]>(`https://api.github.com/orgs/${org}/members?per_page=100`, token);
+  async fetchOrgMembers(token: string | undefined, org: string): Promise<RawMember[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    return requestGitHub<RawMember[]>(`/orgs/${safeOrg}/members?per_page=100`, token);
   },
 
-  async fetchOrgRepos(token: string, org: string): Promise<RawRepo[]> {
-    return requestGitHub<RawRepo[]>(`https://api.github.com/orgs/${org}/repos?type=all&per_page=100&sort=updated`, token);
+  async fetchOrgRepos(token: string | undefined, org: string): Promise<RawRepo[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    return requestGitHub<RawRepo[]>(`/orgs/${safeOrg}/repos?type=all&per_page=100&sort=updated`, token);
   },
 
-  async fetchRepoCommits(token: string, org: string, repo: string, sinceDate?: string): Promise<RawCommit[]> {
-    let url = `https://api.github.com/repos/${org}/${repo}/commits?per_page=100`;
+  async fetchRepoCommits(token: string | undefined, org: string, repo: string, sinceDate?: string): Promise<RawCommit[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    const safeRepo = encodeURIComponent(repo.trim());
+    let path = `/repos/${safeOrg}/${safeRepo}/commits?per_page=100`;
     if (sinceDate) {
-      url += `&since=${encodeURIComponent(sinceDate)}`;
+      path += `&since=${encodeURIComponent(sinceDate)}`;
     }
     try {
-      return await requestGitHub<RawCommit[]>(url, token);
+      return await requestGitHub<RawCommit[]>(path, token);
     } catch (err: unknown) {
       const e = err as { status?: number };
       if (e.status === 409) {
@@ -187,27 +202,33 @@ export const githubApi = {
     }
   },
 
-  async fetchRepoPulls(token: string, org: string, repo: string): Promise<RawPull[]> {
-    const url = `https://api.github.com/repos/${org}/${repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`;
-    return requestGitHub<RawPull[]>(url, token);
+  async fetchRepoPulls(token: string | undefined, org: string, repo: string): Promise<RawPull[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    const safeRepo = encodeURIComponent(repo.trim());
+    const path = `/repos/${safeOrg}/${safeRepo}/pulls?state=all&per_page=100&sort=updated&direction=desc`;
+    return requestGitHub<RawPull[]>(path, token);
   },
 
-  async fetchPullReviews(token: string, org: string, repo: string, pullNumber: number): Promise<RawReview[]> {
-    const url = `https://api.github.com/repos/${org}/${repo}/pulls/${pullNumber}/reviews?per_page=100`;
+  async fetchPullReviews(token: string | undefined, org: string, repo: string, pullNumber: number): Promise<RawReview[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    const safeRepo = encodeURIComponent(repo.trim());
+    const path = `/repos/${safeOrg}/${safeRepo}/pulls/${pullNumber}/reviews?per_page=100`;
     try {
-      return await requestGitHub<RawReview[]>(url, token);
+      return await requestGitHub<RawReview[]>(path, token);
     } catch {
       return [];
     }
   },
 
-  async fetchRepoIssues(token: string, org: string, repo: string, sinceDate?: string): Promise<RawIssue[]> {
-    let url = `https://api.github.com/repos/${org}/${repo}/issues?state=all&per_page=100`;
+  async fetchRepoIssues(token: string | undefined, org: string, repo: string, sinceDate?: string): Promise<RawIssue[]> {
+    const safeOrg = encodeURIComponent(org.trim());
+    const safeRepo = encodeURIComponent(repo.trim());
+    let path = `/repos/${safeOrg}/${safeRepo}/issues?state=all&per_page=100`;
     if (sinceDate) {
-      url += `&since=${encodeURIComponent(sinceDate)}`;
+      path += `&since=${encodeURIComponent(sinceDate)}`;
     }
     try {
-      const issues = await requestGitHub<RawIssue[]>(url, token);
+      const issues = await requestGitHub<RawIssue[]>(path, token);
       // Filter out Pull Requests because GitHub API returns PRs in /issues endpoint
       return issues.filter((i) => !i.pull_request);
     } catch {

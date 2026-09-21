@@ -175,7 +175,9 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                   alt={contributor.login}
                   className="dossier-avatar-img"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${contributor.login}&background=141414&color=fff`;
+                    const target = e.currentTarget;
+                    target.onerror = null;
+                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contributor.login)}&background=141414&color=fff`;
                   }}
                 />
               </div>
@@ -190,7 +192,7 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                   <a
                     href={contributor.profileUrl}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="dossier-ext-link"
                   >
                     [GH_PROFILE_URL]

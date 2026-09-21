@@ -123,8 +123,7 @@ The application is fully configured for zero-configuration deployment to Vercel 
    - **Output Directory**: `dist`
 4. Expand **Environment Variables** and add:
    - `VITE_GITHUB_ORG` = `Move2Move` (or your target organization)
-   - `VITE_GITHUB_TOKEN` = `ghp_your_classic_token_here`
-   - `VITE_EXCLUDED_REPOS` = (optional comma-separated list of repository names to ignore)
+   - Do **NOT** add `VITE_GITHUB_TOKEN` to public deployments (see security caution below).
 5. Click **Deploy**.
 
 ### Option B: Via Vercel CLI
@@ -133,20 +132,14 @@ The application is fully configured for zero-configuration deployment to Vercel 
    vercel
    ```
 2. Follow the prompts to link your project.
-3. Set your environment variables:
+3. Set your organization environment variable:
    ```bash
    vercel env add VITE_GITHUB_ORG
-   vercel env add VITE_GITHUB_TOKEN
-   vercel env add VITE_EXCLUDED_REPOS
    ```
 4. Deploy to production:
    ```bash
    vercel --prod
    ```
-
-> [!NOTE]
-> Environment variables prefixed with `VITE_` are bundled into the client build on Vercel. Users visiting your deployment can still override the token locally in their browser via the **CONFIG** dialog at any time.
-
 ---
 
 ## Project Structure

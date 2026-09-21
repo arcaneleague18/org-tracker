@@ -36,6 +36,18 @@ const emptyOrgOverview: OrgOverview = {
   dailyActivity: []
 };
 
+/**
+ * Neutralizes spreadsheet formula injection (CWE-1236) in CSV exports.
+ * If a value starts with formula triggers (=, +, -, @, \t, \r), prepends a single quote (').
+ * Also escapes inner double quotes and encloses the value in quotes.
+ */
+function sanitizeCsvCell(val: unknown): string {
+  if (val === null || val === undefined) return '""';
+  const str = String(val);
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
 export const App: React.FC = () => {
   const [credentials, setCredentials] = useState<GitHubCredentials>(() => cacheService.getCredentials());
   const [dateRange, setDateRange] = useState<DateRangeOption>('90d');
@@ -324,11 +336,6 @@ export const App: React.FC = () => {
 
   // Live Sync Trigger -- fetches ALL repos (no exclusion during fetch)
   const handleTriggerSync = useCallback(async () => {
-    if (!credentials.token) {
-      setIsSettingsOpen(true);
-      return;
-    }
-
     setErrorMessage(null);
     setSyncStatus({
       isSyncing: true,
@@ -449,12 +456,10 @@ export const App: React.FC = () => {
     }
   }, [credentials, dateRange, syncStatus.lastSyncedAt]);
 
-  // Auto-sync on load if token is available and no cached data exists
+  // Auto-sync on load if no cached data exists
   useEffect(() => {
-    if (credentials.token && !syncStatus.isSyncing) {
-      if (rawContributors.length === 0) {
-        handleTriggerSync();
-      }
+    if (!syncStatus.isSyncing && rawContributors.length === 0) {
+      handleTriggerSync();
     }
   }, [credentials.token]);
 
@@ -465,33 +470,23 @@ export const App: React.FC = () => {
   };
 
   const handleSaveCredentials = (newCreds: GitHubCredentials) => {
-    const effectiveToken = newCreds.token || cacheService.getEnvToken();
-    const updatedCreds: GitHubCredentials = {
-      ...newCreds,
-      token: effectiveToken
-    };
-    setCredentials(updatedCreds);
+    setCredentials(newCreds);
     cacheService.saveCredentials(newCreds);
-    if (effectiveToken) {
-      setTimeout(() => {
-        handleTriggerSync();
-      }, 100);
-    }
+    setTimeout(() => {
+      handleTriggerSync();
+    }, 100);
   };
 
   const handleClearCredentials = () => {
     cacheService.clearCredentials();
     cacheService.clearCache();
-    const envToken = cacheService.getEnvToken();
-    setCredentials({ token: envToken, org: 'Move2Move' });
+    setCredentials({ token: '', org: 'Move2Move' });
     setRawContributors([]);
     setRawRepositories([]);
     setRawOverview(emptyOrgOverview);
-    if (envToken) {
-      setTimeout(() => {
-        handleTriggerSync();
-      }, 100);
-    }
+    setTimeout(() => {
+      handleTriggerSync();
+    }, 100);
   };
 
   // --- Repo Exclusion Handlers ---
@@ -539,22 +534,22 @@ export const App: React.FC = () => {
       'Lines Deleted',
       'Active Days',
       'Primary Repositories'
-    ];
+    ].map(sanitizeCsvCell);
 
     const rows = contributors.map((c) => [
-      c.rank,
-      `@${c.login}`,
-      `"${c.name.replace(/"/g, '""')}"`,
-      c.role,
-      c.impactScore,
-      c.commitsCount,
-      c.prsMerged,
-      c.prsCreated,
-      c.reviewsCount,
-      c.linesAdded,
-      c.linesDeleted,
-      c.activeDays,
-      `"${c.repositories.map((r) => r.name).join(', ')}"`
+      sanitizeCsvCell(c.rank),
+      sanitizeCsvCell(`@${c.login}`),
+      sanitizeCsvCell(c.name),
+      sanitizeCsvCell(c.role),
+      sanitizeCsvCell(c.impactScore),
+      sanitizeCsvCell(c.commitsCount),
+      sanitizeCsvCell(c.prsMerged),
+      sanitizeCsvCell(c.prsCreated),
+      sanitizeCsvCell(c.reviewsCount),
+      sanitizeCsvCell(c.linesAdded),
+      sanitizeCsvCell(c.linesDeleted),
+      sanitizeCsvCell(c.activeDays),
+      sanitizeCsvCell(c.repositories.map((r) => r.name).join(', '))
     ]);
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -566,6 +561,7 @@ export const App: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -579,7 +575,7 @@ export const App: React.FC = () => {
         onTriggerSync={handleTriggerSync}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onExportCsv={handleExportCsv}
-        hasToken={Boolean(credentials.token)}
+        hasToken={Boolean(credentials.token) || cacheService.hasServerProxy()}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         allRepoNames={allRepoNames}
@@ -591,8 +587,8 @@ export const App: React.FC = () => {
 
       {/* Main Tactical Canvas */}
       <main className="container main-tactical-content">
-        {/* Token Required Banner */}
-        {!credentials.token && (
+        {/* Token Required Banner (Only if neither token nor server proxy is available) */}
+        {!credentials.token && !cacheService.hasServerProxy() && (
           <div className="tactical-unconfigured-banner font-mono">
             <div className="unconfigured-left">
               <span className="unconfigured-tag">[ RESTRICTED_ACCESS // TOKEN_REQUIRED ]</span>

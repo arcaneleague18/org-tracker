@@ -178,7 +178,9 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
                           alt={c.login}
                           className="operative-avatar-img"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${c.login}&background=141414&color=fff`;
+                            const target = e.currentTarget;
+                            target.onerror = null;
+                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(c.login)}&background=141414&color=fff`;
                           }}
                         />
                       </div>
@@ -267,7 +269,9 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
                     alt={c.login}
                     className="card-avatar-img"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${c.login}&background=141414&color=fff`;
+                      const target = e.currentTarget;
+                      target.onerror = null;
+                      target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(c.login)}&background=141414&color=fff`;
                     }}
                   />
                 </div>

@@ -32,16 +32,7 @@ export const cacheService = {
     localStorage.setItem(EXCLUDED_REPOS_KEY, JSON.stringify(cleaned));
   },
 
-  // --- Token Management (.env primary, localStorage override) ---
-
-  getEnvToken(): string {
-    const raw = (import.meta.env.VITE_GITHUB_TOKEN as string | undefined) || '';
-    return raw.replace(/["']/g, '').trim();
-  },
-
-  hasEnvToken(): boolean {
-    return Boolean(this.getEnvToken());
-  },
+  // --- Token Management (Server Proxy default, localStorage optional override) ---
 
   getOverrideToken(): string {
     return (localStorage.getItem(TOKEN_KEY) || '').trim();
@@ -55,14 +46,16 @@ export const cacheService = {
     localStorage.removeItem(TOKEN_KEY);
   },
 
+  hasServerProxy(): boolean {
+    return true;
+  },
+
   // --- Credentials ---
 
   getCredentials(): GitHubCredentials {
     const overrideToken = this.getOverrideToken();
-    const envToken = this.getEnvToken();
-    const token = overrideToken || envToken;
     const org = localStorage.getItem(ORG_KEY) || (import.meta.env.VITE_GITHUB_ORG as string) || 'Move2Move';
-    return { token, org };
+    return { token: overrideToken, org };
   },
 
   saveCredentials(credentials: GitHubCredentials): void {

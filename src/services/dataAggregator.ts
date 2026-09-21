@@ -18,74 +18,71 @@ export interface RawSyncData {
   issuesByRepo: Record<string, RawIssue[]>;
 }
 
+interface RepoStatRecord {
+  name: string;
+  commits: number;
+  prs: number;
+  prsMerged: number;
+  prsClosed: number;
+  reviews: number;
+  issues: number;
+  linesAdded: number;
+  linesDeleted: number;
+  linesChanged: number;
+}
+
+interface ContributorRecord {
+  login: string;
+  name: string;
+  avatarUrl: string;
+  profileUrl: string;
+  commitsCount: number;
+  prsCreated: number;
+  prsMerged: number;
+  prsClosed: number;
+  reviewsCount: number;
+  issuesCount: number;
+  linesAdded: number;
+  linesDeleted: number;
+  activeDates: Set<string>;
+  repos: Map<string, RepoStatRecord>;
+  events: ActivityEvent[];
+  punchcard: Record<string, { count: number; dates: Set<string> }>;
+  activityByDate: Record<string, number>;
+}
+
 export function aggregateOrgData(data: RawSyncData, orgName: string): {
   contributors: ContributorStats[];
   repositories: RepositorySummary[];
   overview: OrgOverview;
 } {
-  const contributorMap: Record<
-    string,
-    {
-      login: string;
-      name: string;
-      avatarUrl: string;
-      profileUrl: string;
-      commitsCount: number;
-      prsCreated: number;
-      prsMerged: number;
-      prsClosed: number;
-      reviewsCount: number;
-      issuesCount: number;
-      linesAdded: number;
-      linesDeleted: number;
-      activeDates: Set<string>;
-      repos: Record<
-        string,
-        {
-          commits: number;
-          prs: number;
-          prsMerged: number;
-          prsClosed: number;
-          reviews: number;
-          issues: number;
-          linesAdded: number;
-          linesDeleted: number;
-          linesChanged: number;
-        }
-      >;
-      events: ActivityEvent[];
-      punchcard: Record<string, { count: number; dates: Set<string> }>;
-      activityByDate: Record<string, number>;
+  const contributorMap = new Map<string, ContributorRecord>();
+
+  const getOrCreateRepoStat = (ctor: ContributorRecord, repoName: string): RepoStatRecord => {
+    let stat = ctor.repos.get(repoName);
+    if (!stat) {
+      stat = {
+        name: repoName,
+        commits: 0,
+        prs: 0,
+        prsMerged: 0,
+        prsClosed: 0,
+        reviews: 0,
+        issues: 0,
+        linesAdded: 0,
+        linesDeleted: 0,
+        linesChanged: 0
+      };
+      ctor.repos.set(repoName, stat);
     }
-  > = {};
+    return stat;
+  };
 
-  // Initialize from org members
-  for (const member of data.members) {
-    contributorMap[member.login.toLowerCase()] = {
-      login: member.login,
-      name: member.login,
-      avatarUrl: member.avatar_url,
-      profileUrl: member.html_url,
-      commitsCount: 0,
-      prsCreated: 0,
-      prsMerged: 0,
-      prsClosed: 0,
-      reviewsCount: 0,
-      issuesCount: 0,
-      linesAdded: 0,
-      linesDeleted: 0,
-      activeDates: new Set(),
-      repos: {},
-      events: [],
-      punchcard: {},
-      activityByDate: {}
-    };
-  }
-
-  const getOrCreateContributor = (login: string, avatarUrl?: string, htmlUrl?: string) => {
+  const getOrCreateContributor = (login: string, avatarUrl?: string, htmlUrl?: string): ContributorRecord => {
     const key = login.toLowerCase();
-    if (!contributorMap[key]) {
-      contributorMap[key] = {
+    let ctor = contributorMap.get(key);
+    if (!ctor) {
+      ctor = {
         login,
         name: login,
         avatarUrl: avatarUrl || `https://github.com/${login}.png`,
@@ -98,15 +95,21 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
         issuesCount: 0,
         linesAdded: 0,
         linesDeleted: 0,
-        activeDates: new Set(),
-        repos: {},
+        activeDates: new Set<string>(),
+        repos: new Map<string, RepoStatRecord>(),
         events: [],
         punchcard: {},
         activityByDate: {}
       };
+      contributorMap.set(key, ctor);
     }
-    return contributorMap[key];
+    return ctor;
   };
+
+  // Initialize from org members
+  for (const member of data.members) {
+    getOrCreateContributor(member.login, member.avatar_url, member.html_url);
+  }
 
   const orgDailyMap: Record<string, { commits: number; prs: number; reviews: number }> = {};
 
@@ -149,23 +152,11 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.punchcard[punchKey].count++;
       ctor.punchcard[punchKey].dates.add(dateStr);
 
-      if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = {
-          commits: 0,
-          prs: 0,
-          prsMerged: 0,
-          prsClosed: 0,
-          reviews: 0,
-          issues: 0,
-          linesAdded: 0,
-          linesDeleted: 0,
-          linesChanged: 0
-        };
-      }
-      ctor.repos[repoName].commits++;
-      ctor.repos[repoName].linesAdded += estimatedAdded;
-      ctor.repos[repoName].linesDeleted += estimatedDeleted;
-      ctor.repos[repoName].linesChanged += estimatedAdded + estimatedDeleted;
+      const repoStat = getOrCreateRepoStat(ctor, repoName);
+      repoStat.commits++;
+      repoStat.linesAdded += estimatedAdded;
+      repoStat.linesDeleted += estimatedDeleted;
+      repoStat.linesChanged += estimatedAdded + estimatedDeleted;
 
       if (ctor.events.length < 100) {
         ctor.events.push({
@@ -203,24 +194,12 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
       recordDailyPoint(dateStr, 'prs');
 
-      if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = {
-          commits: 0,
-          prs: 0,
-          prsMerged: 0,
-          prsClosed: 0,
-          reviews: 0,
-          issues: 0,
-          linesAdded: 0,
-          linesDeleted: 0,
-          linesChanged: 0
-        };
-      }
-      ctor.repos[repoName].prs++;
+      const repoStat = getOrCreateRepoStat(ctor, repoName);
+      repoStat.prs++;
       if (pr.merged_at) {
-        ctor.repos[repoName].prsMerged++;
+        repoStat.prsMerged++;
       } else if (pr.closed_at) {
-        ctor.repos[repoName].prsClosed++;
+        repoStat.prsClosed++;
       }
 
       if (ctor.events.length < 100) {
@@ -254,20 +233,8 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
       recordDailyPoint(dateStr, 'reviews');
 
-      if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = {
-          commits: 0,
-          prs: 0,
-          prsMerged: 0,
-          prsClosed: 0,
-          reviews: 0,
-          issues: 0,
-          linesAdded: 0,
-          linesDeleted: 0,
-          linesChanged: 0
-        };
-      }
-      ctor.repos[repoName].reviews++;
+      const repoStat = getOrCreateRepoStat(ctor, repoName);
+      repoStat.reviews++;
 
       if (ctor.events.length < 100) {
         ctor.events.push({
@@ -297,20 +264,8 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
 
-      if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = {
-          commits: 0,
-          prs: 0,
-          prsMerged: 0,
-          prsClosed: 0,
-          reviews: 0,
-          issues: 0,
-          linesAdded: 0,
-          linesDeleted: 0,
-          linesChanged: 0
-        };
-      }
-      ctor.repos[repoName].issues++;
+      const repoStat = getOrCreateRepoStat(ctor, repoName);
+      repoStat.issues++;
 
       if (ctor.events.length < 100) {
         ctor.events.push({
@@ -329,7 +284,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
   }
 
   // Convert map to array and calculate impact scores
-  const contributorsList: ContributorStats[] = Object.values(contributorMap).map((c) => {
+  const contributorsList: ContributorStats[] = Array.from(contributorMap.values()).map((c) => {
     const punchcardSlots: PunchcardSlot[] = [];
     for (let day = 0; day < 7; day++) {
       for (let hour = 0; hour < 24; hour++) {
@@ -340,18 +295,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       }
     }
 
-    const reposList: RepoContribution[] = Object.entries(c.repos).map(([name, stats]) => ({
-      name,
-      commits: stats.commits,
-      prs: stats.prs,
-      prsMerged: stats.prsMerged,
-      prsClosed: stats.prsClosed,
-      reviews: stats.reviews,
-      issues: stats.issues,
-      linesAdded: stats.linesAdded,
-      linesDeleted: stats.linesDeleted,
-      linesChanged: stats.linesChanged
-    }));
+    const reposList: RepoContribution[] = Array.from(c.repos.values());
 
     // Calculate raw impact
     const rawScore =
@@ -407,13 +351,13 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
     const repoCommits = data.commitsByRepo[r.name] || [];
     const repoPulls = data.pullsByRepo[r.name] || [];
 
-    const committers: Record<string, number> = {};
+    const committers = new Map<string, number>();
     for (const c of repoCommits) {
       const login = c.author?.login || c.commit.author.name || 'unknown';
-      committers[login] = (committers[login] || 0) + 1;
+      committers.set(login, (committers.get(login) || 0) + 1);
     }
 
-    const topContributors = Object.entries(committers)
+    const topContributors = Array.from(committers.entries())
       .map(([login, commits]) => ({ login, commits }))
       .sort((a, b) => b.commits - a.commits)
       .slice(0, 3);
