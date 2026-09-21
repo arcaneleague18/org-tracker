@@ -322,17 +322,7 @@ export const App: React.FC = () => {
     document.body.classList.toggle('theme-light', theme === 'light');
   }, [theme]);
 
-  // Date Range Filtering computation
-  const filteredDailyPoints = useMemo(() => {
-    let daysToInclude = 90;
-    if (dateRange === '7d') daysToInclude = 7;
-    else if (dateRange === '30d') daysToInclude = 30;
-    else if (dateRange === '90d') daysToInclude = 90;
-    else if (dateRange === 'year') daysToInclude = 365;
-    else daysToInclude = 9999;
 
-    return overview.dailyActivity.slice(-daysToInclude);
-  }, [overview.dailyActivity, dateRange]);
 
   // Live Sync Trigger -- fetches ALL repos (no exclusion during fetch)
   const handleTriggerSync = useCallback(async () => {
@@ -634,7 +624,7 @@ export const App: React.FC = () => {
         <OverviewCards overview={overview} />
 
         {/* 2. Temporal Matrix: Organization Heatmap */}
-        <ActivityHeatmap dailyActivity={filteredDailyPoints} />
+        <ActivityHeatmap dailyActivity={overview.dailyActivity} />
 
         {/* 3. Personnel: Contributor Leaderboard Dossier */}
         <ContributorLeaderboard
