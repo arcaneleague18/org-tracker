@@ -380,6 +380,99 @@ export const Header: React.FC<HeaderProps> = ({
             justify-content: space-between;
           }
         }
+        @media (max-width: 640px) {
+          .header-tactical {
+            position: relative;
+            top: auto;
+          }
+          .header-body {
+            gap: 0.45rem;
+            padding: 0.5rem 0 0.45rem 0;
+          }
+          .telemetry-identity {
+            width: 100%;
+            gap: 0.5rem;
+            align-items: center;
+          }
+          .unit-id-box {
+            padding: 0.15rem 0.35rem;
+          }
+          .unit-label {
+            font-size: 0.45rem;
+          }
+          .unit-val {
+            font-size: 0.72rem;
+          }
+          .org-heading-group {
+            flex: 1;
+            gap: 0;
+          }
+          .title-row {
+            gap: 0.4rem;
+            align-items: center;
+            justify-content: flex-start;
+          }
+          .org-macro-name {
+            font-size: 1.15rem;
+            line-height: 1.1;
+          }
+          .tag-private {
+            display: none;
+          }
+          .tag-live,
+          .tag-unconfigured {
+            font-size: 0.55rem;
+            padding: 0.15rem 0.35rem;
+          }
+          .org-telemetry-sub {
+            display: none;
+          }
+          .telemetry-controls {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.4rem;
+            width: 100%;
+          }
+          .time-filter-track {
+            width: 100%;
+            justify-content: space-between;
+            padding: 0.15rem 0.35rem;
+          }
+          .time-bracket-btn {
+            font-size: 0.62rem;
+            padding: 0.15rem 0.25rem;
+          }
+          .tactical-actions-grid {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            flex-wrap: nowrap;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+          }
+          .tactical-actions-grid::-webkit-scrollbar {
+            display: none;
+          }
+          .tactical-actions-grid .btn-tactical {
+            padding: 0.35rem 0.55rem;
+            font-size: 0.65rem;
+            flex-shrink: 0;
+            white-space: nowrap;
+          }
+          .tactical-actions-grid .repo-filter-container {
+            flex-shrink: 0;
+            display: inline-flex;
+          }
+          .tactical-actions-grid .repo-filter-container .btn-tactical {
+            width: auto;
+          }
+          .telemetry-register-bar {
+            display: none;
+          }
+        }
       `}</style>
     </header>
   );
