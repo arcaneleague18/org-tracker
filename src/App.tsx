@@ -234,9 +234,14 @@ export const App: React.FC = () => {
   };
 
   const handleSaveCredentials = (newCreds: GitHubCredentials) => {
-    setCredentials(newCreds);
+    const effectiveToken = newCreds.token || cacheService.getEnvToken();
+    const updatedCreds: GitHubCredentials = {
+      ...newCreds,
+      token: effectiveToken
+    };
+    setCredentials(updatedCreds);
     cacheService.saveCredentials(newCreds);
-    if (newCreds.token) {
+    if (effectiveToken) {
       setTimeout(() => {
         handleTriggerSync();
       }, 100);
@@ -244,12 +249,18 @@ export const App: React.FC = () => {
   };
 
   const handleClearCredentials = () => {
-    setCredentials({ token: '', org: 'Move2Move' });
     cacheService.clearCredentials();
     cacheService.clearCache();
+    const envToken = cacheService.getEnvToken();
+    setCredentials({ token: envToken, org: 'Move2Move' });
     setContributors([]);
     setRepositories([]);
     setOverview(emptyOrgOverview);
+    if (envToken) {
+      setTimeout(() => {
+        handleTriggerSync();
+      }, 100);
+    }
   };
 
   const handleExportCsv = () => {
@@ -323,7 +334,7 @@ export const App: React.FC = () => {
             <div className="unconfigured-left">
               <span className="unconfigured-tag">[ RESTRICTED_ACCESS // TOKEN_REQUIRED ]</span>
               <p className="unconfigured-text">
-                Move2Move organization repositories are private. Configure a GitHub Personal Access Token (PAT) with repo and read:org permissions to index live commits, PRs, and code audits.
+                Move2Move organization repositories are private. Configure a GitHub Personal Access Token (PAT) in .env (VITE_GITHUB_TOKEN) or override in system configuration to index live commits, PRs, and code audits.
               </p>
             </div>
             <button
@@ -331,7 +342,7 @@ export const App: React.FC = () => {
               onClick={() => setIsSettingsOpen(true)}
               className="btn-tactical btn-tactical-hazard unconfigured-btn"
             >
-              [ CONFIGURE_PAT_CREDENTIALS ]
+              [ CONFIGURE_CREDENTIALS ]
             </button>
           </div>
         )}
@@ -390,7 +401,7 @@ export const App: React.FC = () => {
               onClick={() => setIsSettingsOpen(true)}
               className="footer-link-tactical"
             >
-              [AUTH_CONFIG]
+              [CONFIG]
             </button>
             <span className="footer-pipe">|</span>
             <button

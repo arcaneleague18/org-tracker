@@ -61,15 +61,43 @@ export const cacheService = {
     localStorage.setItem(LAST_EXCLUDED_REPOS_HASH, currentSignature);
   },
 
+  getEnvToken(): string {
+    const raw = (import.meta.env.VITE_GITHUB_TOKEN as string | undefined) || '';
+    return raw.replace(/["']/g, '').trim();
+  },
+
+  hasEnvToken(): boolean {
+    return Boolean(this.getEnvToken());
+  },
+
+  getOverrideToken(): string {
+    return (localStorage.getItem(TOKEN_KEY) || '').trim();
+  },
+
+  hasTokenOverride(): boolean {
+    return Boolean(this.getOverrideToken());
+  },
+
+  clearTokenOverride(): void {
+    localStorage.removeItem(TOKEN_KEY);
+  },
+
   getCredentials(): GitHubCredentials {
-    const token = localStorage.getItem(TOKEN_KEY) || (import.meta.env.VITE_GITHUB_TOKEN as string) || '';
+    const overrideToken = this.getOverrideToken();
+    const envToken = this.getEnvToken();
+    const token = overrideToken || envToken;
     const org = localStorage.getItem(ORG_KEY) || (import.meta.env.VITE_GITHUB_ORG as string) || 'Move2Move';
     const excludedRepos = this.getExcludedRepos();
     return { token, org, excludedRepos };
   },
 
   saveCredentials(credentials: GitHubCredentials): void {
-    localStorage.setItem(TOKEN_KEY, credentials.token.trim());
+    const cleanToken = credentials.token ? credentials.token.trim() : '';
+    if (cleanToken) {
+      localStorage.setItem(TOKEN_KEY, cleanToken);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
     localStorage.setItem(ORG_KEY, credentials.org.trim());
     if (credentials.excludedRepos) {
       this.saveExcludedRepos(credentials.excludedRepos);

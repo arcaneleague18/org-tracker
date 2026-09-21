@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { GitHubCredentials } from '../types';
 import { githubApi, RateLimitStatus } from '../services/githubApi';
+import { cacheService } from '../services/cacheService';
 import { RefreshIcon } from './Icons';
 
 interface SettingsModalProps {
@@ -18,7 +19,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   envExcludedRepos = []
 }) => {
-  const [token, setToken] = useState(initialCredentials.token);
+  const envToken = cacheService.getEnvToken();
+  const hasEnv = Boolean(envToken);
+  const [tokenOverride, setTokenOverride] = useState(() => cacheService.getOverrideToken());
   const [org, setOrg] = useState(initialCredentials.org || 'Move2Move');
   const [excludedText, setExcludedText] = useState(() => {
     return (initialCredentials.excludedRepos || []).join(', ');
@@ -30,11 +33,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     orgName?: string;
     rateLimit?: RateLimitStatus | null;
     error?: string;
+    tokenSource?: 'override' | 'env';
   } | null>(null);
 
+  const effectiveToken = tokenOverride.trim() || envToken;
+
   const handleTestConnection = async () => {
-    if (!token.trim()) {
-      setTestResult({ success: false, error: 'TOKEN_REQUIRED: INPUT A VALID GITHUB PERSONAL ACCESS TOKEN.' });
+    if (!effectiveToken) {
+      setTestResult({
+        success: false,
+        error: 'TOKEN_REQUIRED: CONFIGURE VITE_GITHUB_TOKEN IN .ENV OR INPUT AN OVERRIDE TOKEN.'
+      });
       return;
     }
     if (!org.trim()) {
@@ -46,12 +55,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTestResult(null);
 
     try {
-      const res = await githubApi.testConnection(token.trim(), org.trim());
+      const res = await githubApi.testConnection(effectiveToken, org.trim());
       setTestResult({
         success: true,
         userLogin: res.userLogin,
         orgName: res.orgName,
-        rateLimit: res.rateLimit
+        rateLimit: res.rateLimit,
+        tokenSource: tokenOverride.trim() ? 'override' : 'env'
       });
     } catch (err: unknown) {
       const e = err as Error;
@@ -70,7 +80,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       .map((s) => s.replace(/["']/g, '').trim())
       .filter(Boolean);
     onSave({
-      token: token.trim(),
+      token: tokenOverride.trim(),
       org: org.trim(),
       excludedRepos: parsedExcluded
     });
@@ -78,7 +88,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleClear = () => {
-    setToken('');
+    setTokenOverride('');
+    cacheService.clearTokenOverride();
     setExcludedText('');
     setTestResult(null);
     onClear();
@@ -91,10 +102,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="settings-inner">
           <div className="settings-header">
             <div>
-              <span className="telemetry-eyebrow">AUTH // CONFIG_SETTINGS</span>
-              <h3 className="macro-title settings-title">Authentication Protocol</h3>
+              <span className="telemetry-eyebrow">SYSTEM // CONFIGURATION</span>
+              <h3 className="macro-title settings-title">System Configuration</h3>
               <p className="settings-desc">
-                [ ACCESS_PROTOCOL: GITHUB_REST_V3 // INGRESS: PERSONAL_ACCESS_TOKEN ]
+                [ ACCESS_PROTOCOL: GITHUB_REST_V3 // CREDENTIALS &amp; REPOSITORY_FILTERS ]
               </p>
             </div>
             <button type="button" onClick={onClose} className="btn-tactical btn-close">
@@ -107,7 +118,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="security-dossier-callout">
               <span className="sec-tag">[ SEC_DIRECTIVE // ZERO_SERVER_STORAGE ]</span>
               <p className="sec-text">
-                TOKEN IS STORED EXCLUSIVELY WITHIN THE BROWSER LOCALSTORAGE SUBSYSTEM. ALL API CALLS EXECUTE DIRECTLY AGAINST API.GITHUB.COM. ZERO PROXIES OR INTERMEDIARY RELAYS.
+                GITHUB PAT IS SOURCED DIRECTLY FROM .ENV (VITE_GITHUB_TOKEN). OPTIONAL OVERRIDES ARE STORED EXCLUSIVELY WITHIN BROWSER LOCALSTORAGE. DIRECT TELEMETRY TO API.GITHUB.COM.
               </p>
             </div>
 
@@ -128,20 +139,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="tactical-field-group">
-              <label className="field-label" htmlFor="pat-token">
-                [ CLASSIC_PERSONAL_ACCESS_TOKEN ]
-              </label>
+              <div className="field-label-row">
+                <label className="field-label" htmlFor="pat-token">
+                  [ GITHUB_PERSONAL_ACCESS_TOKEN ]
+                </label>
+                {tokenOverride.trim() ? (
+                  <span className="env-badge font-mono" style={{ borderColor: 'var(--accent-hazard)', color: 'var(--accent-hazard)' }}>
+                    [OVERRIDE ACTIVE]
+                  </span>
+                ) : hasEnv ? (
+                  <span className="env-badge font-mono">[.ENV ACTIVE]</span>
+                ) : (
+                  <span className="env-badge font-mono" style={{ borderColor: 'var(--accent-hazard)', color: 'var(--accent-hazard)' }}>
+                    [TOKEN REQUIRED]
+                  </span>
+                )}
+              </div>
               <input
                 id="pat-token"
                 type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                value={tokenOverride}
+                onChange={(e) => setTokenOverride(e.target.value)}
+                placeholder={hasEnv ? "Using token from .env (leave blank or enter to override)" : "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
                 className="tactical-text-input"
               />
-              <span className="field-help">
-                REQUIRED PRIVILEGES: <code>repo</code> (PRIVATE_REPOSITORIES), <code>read:org</code> (TEAM_ROSTER), <code>read:user</code>
-              </span>
+              <div className="field-help-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span className="field-help">
+                  {hasEnv ? (
+                    <>
+                      TOKEN ACTIVE VIA <code>.env</code> (<code>VITE_GITHUB_TOKEN</code>). INPUT A VALUE ONLY TO LOCALLY OVERRIDE.
+                    </>
+                  ) : (
+                    <>
+                      REQUIRED PRIVILEGES: <code>repo</code>, <code>read:org</code>, <code>read:user</code>. CAN BE CONFIGURED IN <code>.env</code>.
+                    </>
+                  )}
+                </span>
+                {tokenOverride.trim() && hasEnv && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTokenOverride('');
+                      cacheService.clearTokenOverride();
+                    }}
+                    className="btn-tactical"
+                    style={{ fontSize: '0.62rem', padding: '0.15rem 0.45rem', whiteSpace: 'nowrap' }}
+                    title="Remove local override and use .env token"
+                  >
+                    [REVERT TO .ENV]
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="tactical-field-group">
@@ -191,7 +239,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div>
                     <span className="feedback-hdr">[ HANDSHAKE: SUCCESSFUL ]</span>
                     <p className="feedback-sub">
-                      AUTHENTICATED AS: @{testResult.userLogin} // ORG: {testResult.orgName}
+                      AUTHENTICATED AS: @{testResult.userLogin} // ORG: {testResult.orgName} // TOKEN_SOURCE: {testResult.tokenSource === 'override' ? 'LOCAL_OVERRIDE' : '.ENV_ACTIVE'}
                       {testResult.rateLimit && (
                         <span> // QUOTA_REMAINING: {testResult.rateLimit.remaining} / {testResult.rateLimit.limit} CALLS</span>
                       )}
@@ -208,7 +256,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="settings-footer">
-            {initialCredentials.token && (
+            {tokenOverride.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setTokenOverride('');
+                  cacheService.clearTokenOverride();
+                }}
+                className="btn-tactical btn-tactical-hazard"
+                title="Remove local override and use .env token"
+              >
+                [CLEAR_OVERRIDE]
+              </button>
+            ) : !hasEnv && initialCredentials.token ? (
               <button
                 type="button"
                 onClick={handleClear}
@@ -216,13 +276,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 [PURGE_TOKEN]
               </button>
+            ) : (
+              <div />
             )}
 
             <div className="footer-actions-right">
               <button
                 type="button"
                 onClick={handleTestConnection}
-                disabled={isTesting || !token.trim()}
+                disabled={isTesting || !effectiveToken || !org.trim()}
                 className="btn-tactical"
               >
                 <RefreshIcon size={12} spinning={isTesting} />
@@ -232,10 +294,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!token.trim()}
+                disabled={!effectiveToken || !org.trim()}
                 className="btn-tactical btn-tactical-hazard"
               >
-                [COMMIT_&_CONNECT]
+                [SAVE_CONFIG]
               </button>
             </div>
           </div>

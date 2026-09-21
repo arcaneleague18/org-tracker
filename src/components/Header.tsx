@@ -129,10 +129,10 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onOpenSettings}
                 className="btn-tactical"
-                title="Configure GitHub Authentication Credentials"
+                title="System Configuration"
               >
                 <SettingsIcon size={12} />
-                <span>CONFIG_PAT</span>
+                <span>CONFIG</span>
               </button>
             </div>
           </div>
