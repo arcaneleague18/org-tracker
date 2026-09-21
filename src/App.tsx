@@ -407,10 +407,12 @@ export const App: React.FC = () => {
       </footer>
 
       {/* Declassified Contributor Dossier Modal */}
-      <ContributorDetailModal
-        contributor={selectedContributor}
-        onClose={() => setSelectedContributor(null)}
-      />
+      {selectedContributor && (
+        <ContributorDetailModal
+          contributor={selectedContributor}
+          onClose={() => setSelectedContributor(null)}
+        />
+      )}
 
       {/* Settings Modal */}
       {isSettingsOpen && (

@@ -11,10 +11,19 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   contributor,
   onClose
 }) => {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+  const [hoveredSlot, setHoveredSlot] = useState<{
+    day: number;
+    hour: number;
+    count: number;
+    dates: string[];
+  } | null>(null);
 
   useEffect(() => {
+    setSelectedDate(null);
     setSelectedDayIndex(null);
+    setHoveredSlot(null);
   }, [contributor?.login]);
 
   useEffect(() => {
@@ -31,6 +40,48 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   const maxPunch = Math.max(...contributor.punchcard.map((s) => s.count), 1);
   const totalRepoCommits = contributor.repositories.reduce((acc, r) => acc + r.commits, 0) || 1;
 
+  const getEventCanonicalDate = (event: ActivityEvent): string => {
+    if (event.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(event.dateStr)) {
+      return event.dateStr;
+    }
+    if (event.isoDate) {
+      return event.isoDate.split('T')[0];
+    }
+    if (event.timestamp) {
+      if (/^\d{4}-\d{2}-\d{2}/.test(event.timestamp)) {
+        return event.timestamp.substring(0, 10);
+      }
+      const d = new Date(event.timestamp);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+      const parts = event.timestamp.split(/[/.-]/).map(Number);
+      if (parts.length === 3) {
+        if (parts[0] > 12) {
+          return `${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`;
+        } else {
+          return `${parts[2]}-${String(parts[0]).padStart(2, '0')}-${String(parts[1]).padStart(2, '0')}`;
+        }
+      }
+    }
+    return '';
+  };
+
+  const formatDisplayDate = (canonicalDate: string): string => {
+    if (!canonicalDate) return '';
+    const parts = canonicalDate.split('-').map(Number);
+    if (parts.length === 3) {
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (!isNaN(d.getTime())) {
+        return `${parts[1]}/${parts[2]}/${parts[0]}`;
+      }
+    }
+    return canonicalDate;
+  };
+
   const getEventDayOfWeek = (event: ActivityEvent): number => {
     if (typeof event.dayOfWeek === 'number' && event.dayOfWeek >= 0 && event.dayOfWeek <= 6) {
       return event.dayOfWeek;
@@ -41,28 +92,74 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
         return d.getDay();
       }
     }
-    if (event.timestamp) {
-      const d = new Date(event.timestamp);
-      if (!isNaN(d.getTime())) {
-        return d.getDay();
-      }
-      const parts = event.timestamp.split(/[/.-]/).map(Number);
-      if (parts.length === 3) {
-        if (parts[0] > 12) {
-          const fallbackDate = new Date(parts[2], parts[1] - 1, parts[0]);
-          if (!isNaN(fallbackDate.getTime())) return fallbackDate.getDay();
-        } else {
-          const fallbackDate = new Date(parts[2], parts[0] - 1, parts[1]);
-          if (!isNaN(fallbackDate.getTime())) return fallbackDate.getDay();
-        }
-      }
+    const cDate = getEventCanonicalDate(event);
+    if (cDate) {
+      const parts = cDate.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (!isNaN(d.getTime())) return d.getDay();
     }
     return -1;
   };
 
-  const filteredEvents = selectedDayIndex === null
-    ? contributor.recentActivity
-    : contributor.recentActivity.filter((event) => getEventDayOfWeek(event) === selectedDayIndex);
+  const getEventHour = (event: ActivityEvent): number => {
+    if (typeof event.hour === 'number' && event.hour >= 0 && event.hour <= 23) {
+      return event.hour;
+    }
+    if (event.isoDate) {
+      const d = new Date(event.isoDate);
+      if (!isNaN(d.getTime())) return d.getHours();
+    }
+    return -1;
+  };
+
+  // Build a lookup map of `${day}-${hour}` -> canonical dates
+  const slotDatesMap: Record<string, string[]> = {};
+  const tempMap: Record<string, Set<string>> = {};
+  contributor.punchcard.forEach((s) => {
+    const key = `${s.day}-${s.hour}`;
+    if (!tempMap[key]) tempMap[key] = new Set();
+    if (s.dates) {
+      s.dates.forEach((d) => tempMap[key].add(d));
+    }
+  });
+
+  contributor.recentActivity.forEach((event) => {
+    const cDate = getEventCanonicalDate(event);
+    const day = getEventDayOfWeek(event);
+    const hour = getEventHour(event);
+    if (cDate && day >= 0 && hour >= 0) {
+      const key = `${day}-${hour}`;
+      if (!tempMap[key]) tempMap[key] = new Set();
+      tempMap[key].add(cDate);
+    }
+  });
+
+  for (const [key, set] of Object.entries(tempMap)) {
+    slotDatesMap[key] = Array.from(set).sort().reverse();
+  }
+
+  const getSlotDates = (day: number, hour: number): string[] => {
+    return slotDatesMap[`${day}-${hour}`] || [];
+  };
+
+  const getDayActiveDates = (dayIndex: number): string[] => {
+    const datesSet = new Set<string>();
+    for (let hour = 0; hour < 24; hour++) {
+      const dates = getSlotDates(dayIndex, hour);
+      dates.forEach((d) => datesSet.add(d));
+    }
+    return Array.from(datesSet).sort().reverse();
+  };
+
+  const filteredEvents = selectedDate
+    ? contributor.recentActivity.filter(
+        (event) => getEventCanonicalDate(event) === selectedDate
+      )
+    : selectedDayIndex !== null
+    ? contributor.recentActivity.filter(
+        (event) => getEventDayOfWeek(event) === selectedDayIndex
+      )
+    : contributor.recentActivity;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -164,39 +261,64 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           <div className="dossier-section">
             <div className="section-title-strip flex-between">
               <span>// HOURLY_PUNCHCARD_RADAR [00:00 TO 23:00 UTC]</span>
-              {selectedDayIndex !== null && (
+              {selectedDate ? (
+                <span className="punchcard-filter-indicator">
+                  [ACTIVE_DATE: {formatDisplayDate(selectedDate)} ({daysOfWeek[selectedDayIndex ?? 0]})]
+                </span>
+              ) : selectedDayIndex !== null ? (
                 <span className="punchcard-filter-indicator">
                   [ACTIVE_DAY: {daysOfWeek[selectedDayIndex]}]
                 </span>
-              )}
+              ) : null}
             </div>
             <div className="punchcard-console">
               {daysOfWeek.map((dayName, dayIndex) => {
                 const daySlots = contributor.punchcard.filter((s) => s.day === dayIndex);
+                const dayDates = getDayActiveDates(dayIndex);
                 const isSelected = selectedDayIndex === dayIndex;
-                const isAnySelected = selectedDayIndex !== null;
+                const isAnySelected = selectedDayIndex !== null || selectedDate !== null;
                 const totalDayActions = daySlots.reduce((acc, s) => acc + s.count, 0);
 
                 return (
                   <div
                     key={dayName}
                     className={`punch-console-row ${isSelected ? 'row-selected' : ''} ${isAnySelected && !isSelected ? 'row-dimmed' : ''}`}
-                    onClick={() => setSelectedDayIndex(isSelected ? null : dayIndex)}
-                    role="button"
-                    tabIndex={0}
-                    title={`CLICK TO ${isSelected ? 'CLEAR FILTER' : `FILTER BY ${dayName}`} [${totalDayActions} ACTIONS RECORDED]`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
+                    onClick={() => {
+                      if (dayDates.length === 0) {
                         setSelectedDayIndex(isSelected ? null : dayIndex);
+                        setSelectedDate(null);
+                        return;
+                      }
+                      if (selectedDayIndex === dayIndex) {
+                        if (selectedDate) {
+                          const idx = dayDates.indexOf(selectedDate);
+                          if (idx >= 0 && idx < dayDates.length - 1) {
+                            setSelectedDate(dayDates[idx + 1]);
+                          } else {
+                            setSelectedDate(null);
+                            setSelectedDayIndex(null);
+                          }
+                        } else {
+                          setSelectedDate(dayDates[0]);
+                        }
+                      } else {
+                        setSelectedDayIndex(dayIndex);
+                        setSelectedDate(dayDates[0]);
                       }
                     }}
+                    role="button"
+                    tabIndex={0}
+                    title={`CLICK TO ${isSelected ? 'CLEAR FILTER' : `FILTER BY ${dayName}`} [${totalDayActions} ACTIONS // ${dayDates.length} ACTIVE DATE${dayDates.length === 1 ? '' : 'S'}]`}
                   >
                     <span className={`punch-day-code ${isSelected ? 'day-code-selected' : ''}`}>
                       {dayName}
                     </span>
                     <div className="punch-grid-track">
                       {daySlots.map((slot) => {
+                        const slotDates = getSlotDates(dayIndex, slot.hour);
+                        const dateDisplayList = slotDates.map(formatDisplayDate);
+                        const hasSelectedDate = selectedDate ? slotDates.includes(selectedDate) : false;
+
                         const getPunchIntensityClass = (count: number) => {
                           if (count === 0) return 'cell-l0';
                           const ratio = count / maxPunch;
@@ -206,11 +328,48 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                           return 'cell-l4';
                         };
 
+                        let tooltipText = `${dayName} @ ${slot.hour.toString().padStart(2, '0')}:00 UTC // ${slot.count} ACTION${slot.count === 1 ? '' : 'S'}`;
+                        if (slotDates.length > 0) {
+                          tooltipText += ` ON ${dateDisplayList.join(', ')}`;
+                        } else if (slot.count === 0) {
+                          tooltipText += ` (NO RECORDED ACTIONS)`;
+                        }
+
                         return (
                           <div
                             key={slot.hour}
-                            className={`punch-square ${getPunchIntensityClass(slot.count)}`}
-                            title={`${dayName} @ ${slot.hour.toString().padStart(2, '0')}:00 UTC // ${slot.count} ACTIONS`}
+                            className={`punch-square ${getPunchIntensityClass(slot.count)} ${
+                              hasSelectedDate ? 'cell-date-selected' : ''
+                            } ${selectedDate && !hasSelectedDate ? 'cell-date-other' : ''}`}
+                            title={tooltipText}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (slotDates.length > 0) {
+                                if (selectedDate === slotDates[0]) {
+                                  if (slotDates.length > 1) {
+                                    setSelectedDate(slotDates[1]);
+                                  } else {
+                                    setSelectedDate(null);
+                                    setSelectedDayIndex(null);
+                                  }
+                                } else {
+                                  setSelectedDate(slotDates[0]);
+                                  setSelectedDayIndex(dayIndex);
+                                }
+                              } else {
+                                setSelectedDayIndex(isSelected ? null : dayIndex);
+                                setSelectedDate(null);
+                              }
+                            }}
+                            onMouseEnter={() => {
+                              setHoveredSlot({
+                                day: dayIndex,
+                                hour: slot.hour,
+                                count: slot.count,
+                                dates: slotDates
+                              });
+                            }}
+                            onMouseLeave={() => setHoveredSlot(null)}
                           />
                         );
                       })}
@@ -218,6 +377,37 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                   </div>
                 );
               })}
+
+              {/* Real-time Telemetry HUD readout on hover */}
+              <div className="punch-telemetry-hud font-mono">
+                {hoveredSlot ? (
+                  <div className="hud-content">
+                    <span className="hud-coord">COORD: [{daysOfWeek[hoveredSlot.day]} @ {hoveredSlot.hour.toString().padStart(2, '0')}:00 UTC]</span>
+                    <span className="hud-sep">///</span>
+                    <span className="hud-accent">{hoveredSlot.count} ACTION{hoveredSlot.count === 1 ? '' : 'S'}</span>
+                    {hoveredSlot.dates.length > 0 ? (
+                      <>
+                        <span className="hud-sep">///</span>
+                        <span className="hud-date-pill">DATE: {hoveredSlot.dates.map(formatDisplayDate).join(', ')}</span>
+                      </>
+                    ) : (
+                      <span className="hud-dim"> /// NO ACTIVITY</span>
+                    )}
+                  </div>
+                ) : selectedDate ? (
+                  <div className="hud-content">
+                    <span className="hud-label">FILTERED_DATE:</span>
+                    <span className="hud-date-pill">[{formatDisplayDate(selectedDate)} ({daysOfWeek[selectedDayIndex ?? 0]})]</span>
+                    <span className="hud-sep">///</span>
+                    <span className="hud-hint">CLICK ANY CELL TO SWITCH DATE // CLICK [ALL] TO RESET</span>
+                  </div>
+                ) : (
+                  <div className="hud-content hud-idle">
+                    <span>// HOVER OVER ANY CELL TO VIEW EXACT DATE & TIME // CLICK TO FILTER BY DATE</span>
+                  </div>
+                )}
+              </div>
+
               <div className="punch-calibration-row">
                 <div className="punch-footer-axis">
                   <span>00H</span>
@@ -244,17 +434,41 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             <div className="section-title-strip action-log-header-strip">
               <div className="action-log-header-left">
                 <span>// CHRONOLOGICAL_ACTION_LOG</span>
-                {selectedDayIndex !== null && (
+                {selectedDate ? (
                   <span className="action-log-filter-tag">
-                    [FILTER: {daysOfWeek[selectedDayIndex]} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
+                    [DATE: {formatDisplayDate(selectedDate)} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
                   </span>
+                ) : selectedDayIndex !== null ? (
+                  <span className="action-log-filter-tag">
+                    [DAY: {daysOfWeek[selectedDayIndex]} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
+                  </span>
+                ) : null}
+
+                {/* Quick-switch date pills if multiple dates available on the selected day */}
+                {selectedDayIndex !== null && getDayActiveDates(selectedDayIndex).length > 1 && (
+                  <div className="action-log-date-pills">
+                    {getDayActiveDates(selectedDayIndex).map((dStr) => (
+                      <button
+                        key={dStr}
+                        type="button"
+                        className={`btn-date-pill ${selectedDate === dStr ? 'is-active' : ''}`}
+                        onClick={() => setSelectedDate(dStr)}
+                        title={`FILTER STRICTLY BY ${formatDisplayDate(dStr)}`}
+                      >
+                        {formatDisplayDate(dStr)}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
               <div className="action-log-header-right">
                 <button
                   type="button"
-                  className={`btn-tactical btn-action-all ${selectedDayIndex === null ? 'active' : ''}`}
-                  onClick={() => setSelectedDayIndex(null)}
+                  className={`btn-tactical btn-action-all ${selectedDate === null && selectedDayIndex === null ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedDate(null);
+                    setSelectedDayIndex(null);
+                  }}
                   title="VIEW ALL CONTRIBUTIONS"
                 >
                   [ALL]
@@ -264,7 +478,9 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             <div className="action-log-stream">
               {filteredEvents.length === 0 ? (
                 <p className="no-events-prompt">
-                  {selectedDayIndex !== null
+                  {selectedDate
+                    ? `[ ZERO RECORDED ACTIONS ON ${formatDisplayDate(selectedDate)} ]`
+                    : selectedDayIndex !== null
                     ? `[ ZERO RECORDED ACTIONS ON ${daysOfWeek[selectedDayIndex]} ]`
                     : '[ NO RECORDED ACTIONS IN CURRENT WINDOW ]'}
                 </p>
@@ -501,6 +717,63 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           outline: 2px solid var(--text-phosphor);
           z-index: 5;
         }
+        .punch-square.cell-date-selected {
+          outline: 2px solid var(--text-phosphor);
+          box-shadow: 0 0 6px var(--accent-radar);
+          z-index: 6;
+        }
+        .punch-square.cell-date-other {
+          opacity: 0.25;
+        }
+
+        .punch-telemetry-hud {
+          background: rgba(0, 0, 0, 0.45);
+          border: 1px solid var(--border-tactical);
+          padding: 0.45rem 0.75rem;
+          margin-top: 0.6rem;
+          font-size: 0.65rem;
+          min-height: 2rem;
+          display: flex;
+          align-items: center;
+        }
+        body.theme-light .punch-telemetry-hud {
+          background: rgba(0, 0, 0, 0.04);
+        }
+        .hud-content {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        .hud-coord {
+          color: var(--text-phosphor);
+          font-weight: 700;
+        }
+        .hud-sep {
+          color: var(--border-bright);
+        }
+        .hud-accent {
+          color: var(--accent-radar);
+          font-weight: 700;
+        }
+        .hud-date-pill {
+          color: var(--text-phosphor);
+          font-weight: 700;
+          background: var(--accent-radar-dim);
+          border: 1px solid var(--accent-radar);
+          padding: 1px 5px;
+        }
+        .hud-dim {
+          color: var(--text-ghost);
+        }
+        .hud-hint {
+          color: var(--text-dim);
+        }
+        .hud-idle {
+          color: var(--text-ghost);
+          font-size: 0.62rem;
+        }
+
         .punch-calibration-row {
           display: flex;
           align-items: center;
@@ -553,6 +826,33 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           background: var(--accent-radar-dim);
           border: 1px solid var(--accent-radar);
           padding: 1px 6px;
+        }
+        .action-log-date-pills {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          flex-wrap: wrap;
+        }
+        .btn-date-pill {
+          font-size: 0.6rem;
+          font-weight: 700;
+          font-family: var(--font-mono);
+          padding: 1px 6px;
+          background: transparent;
+          color: var(--text-dim);
+          border: 1px solid var(--border-tactical);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .btn-date-pill:hover {
+          color: var(--text-phosphor);
+          border-color: var(--border-bright);
+        }
+        .btn-date-pill.is-active {
+          background: var(--text-phosphor);
+          color: var(--bg-crt);
+          border-color: var(--text-phosphor);
+          font-weight: 900;
         }
         .action-log-header-right {
           display: flex;

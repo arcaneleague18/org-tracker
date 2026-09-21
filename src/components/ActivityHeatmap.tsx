@@ -66,6 +66,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
                 className={`matrix-cell ${getIntensityClass(point.total)} ${
                   activeHoverPoint?.date === point.date ? 'cell-active' : ''
                 }`}
+                title={`${point.date} // TOTAL: ${point.total} (COMMITS: ${point.commits}, PRS: ${point.prs}, REVIEWS: ${point.reviews})`}
                 onMouseEnter={() => setActiveHoverPoint(point)}
                 onMouseLeave={() => setActiveHoverPoint(null)}
               />

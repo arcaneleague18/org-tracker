@@ -41,7 +41,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       activeDates: Set<string>;
       repos: Record<string, { commits: number; prs: number; linesChanged: number }>;
       events: ActivityEvent[];
-      punchcard: Record<string, number>; // "day-hour" -> count
+      punchcard: Record<string, { count: number; dates: Set<string> }>;
       activityByDate: Record<string, number>;
     }
   > = {};
@@ -130,7 +130,11 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       const day = dateObj.getDay();
       const hour = dateObj.getHours();
       const punchKey = `${day}-${hour}`;
-      ctor.punchcard[punchKey] = (ctor.punchcard[punchKey] || 0) + 1;
+      if (!ctor.punchcard[punchKey]) {
+        ctor.punchcard[punchKey] = { count: 0, dates: new Set<string>() };
+      }
+      ctor.punchcard[punchKey].count++;
+      ctor.punchcard[punchKey].dates.add(dateStr);
 
       if (!ctor.repos[repoName]) {
         ctor.repos[repoName] = { commits: 0, prs: 0, linesChanged: 0 };
@@ -146,6 +150,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
+          dateStr,
           dayOfWeek: dateObj.getDay(),
           hour: dateObj.getHours(),
           url: c.html_url
@@ -186,6 +191,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
+          dateStr,
           dayOfWeek: dateObj.getDay(),
           hour: dateObj.getHours(),
           url: pr.html_url
@@ -216,6 +222,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
+          dateStr,
           dayOfWeek: dateObj.getDay(),
           hour: dateObj.getHours()
         });
@@ -243,6 +250,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
+          dateStr,
           dayOfWeek: dateObj.getDay(),
           hour: dateObj.getHours()
         });
@@ -255,8 +263,10 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
     const punchcardSlots: PunchcardSlot[] = [];
     for (let day = 0; day < 7; day++) {
       for (let hour = 0; hour < 24; hour++) {
-        const count = c.punchcard[`${day}-${hour}`] || 0;
-        punchcardSlots.push({ day, hour, count });
+        const slotData = c.punchcard[`${day}-${hour}`];
+        const count = slotData ? slotData.count : 0;
+        const dates = slotData ? Array.from(slotData.dates).sort() : [];
+        punchcardSlots.push({ day, hour, count, dates });
       }
     }
 

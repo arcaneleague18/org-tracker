@@ -10,6 +10,7 @@ export interface ActivityEvent {
   timestamp: string;
   url?: string;
   isoDate?: string;
+  dateStr?: string; // YYYY-MM-DD canonical date
   dayOfWeek?: number; // 0 (Sun) to 6 (Sat)
   hour?: number; // 0 to 23
 }
@@ -25,6 +26,7 @@ export interface PunchcardSlot {
   day: number; // 0 (Sun) to 6 (Sat)
   hour: number; // 0 to 23
   count: number;
+  dates?: string[]; // Array of YYYY-MM-DD date strings
 }
 
 export interface ContributorStats {
