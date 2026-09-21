@@ -39,7 +39,20 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       linesAdded: number;
       linesDeleted: number;
       activeDates: Set<string>;
-      repos: Record<string, { commits: number; prs: number; linesChanged: number }>;
+      repos: Record<
+        string,
+        {
+          commits: number;
+          prs: number;
+          prsMerged: number;
+          prsClosed: number;
+          reviews: number;
+          issues: number;
+          linesAdded: number;
+          linesDeleted: number;
+          linesChanged: number;
+        }
+      >;
       events: ActivityEvent[];
       punchcard: Record<string, { count: number; dates: Set<string> }>;
       activityByDate: Record<string, number>;
@@ -137,9 +150,21 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.punchcard[punchKey].dates.add(dateStr);
 
       if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = { commits: 0, prs: 0, linesChanged: 0 };
+        ctor.repos[repoName] = {
+          commits: 0,
+          prs: 0,
+          prsMerged: 0,
+          prsClosed: 0,
+          reviews: 0,
+          issues: 0,
+          linesAdded: 0,
+          linesDeleted: 0,
+          linesChanged: 0
+        };
       }
       ctor.repos[repoName].commits++;
+      ctor.repos[repoName].linesAdded += estimatedAdded;
+      ctor.repos[repoName].linesDeleted += estimatedDeleted;
       ctor.repos[repoName].linesChanged += estimatedAdded + estimatedDeleted;
 
       if (ctor.events.length < 100) {
@@ -179,9 +204,24 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       recordDailyPoint(dateStr, 'prs');
 
       if (!ctor.repos[repoName]) {
-        ctor.repos[repoName] = { commits: 0, prs: 0, linesChanged: 0 };
+        ctor.repos[repoName] = {
+          commits: 0,
+          prs: 0,
+          prsMerged: 0,
+          prsClosed: 0,
+          reviews: 0,
+          issues: 0,
+          linesAdded: 0,
+          linesDeleted: 0,
+          linesChanged: 0
+        };
       }
       ctor.repos[repoName].prs++;
+      if (pr.merged_at) {
+        ctor.repos[repoName].prsMerged++;
+      } else if (pr.closed_at) {
+        ctor.repos[repoName].prsClosed++;
+      }
 
       if (ctor.events.length < 100) {
         ctor.events.push({
@@ -214,6 +254,21 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
       recordDailyPoint(dateStr, 'reviews');
 
+      if (!ctor.repos[repoName]) {
+        ctor.repos[repoName] = {
+          commits: 0,
+          prs: 0,
+          prsMerged: 0,
+          prsClosed: 0,
+          reviews: 0,
+          issues: 0,
+          linesAdded: 0,
+          linesDeleted: 0,
+          linesChanged: 0
+        };
+      }
+      ctor.repos[repoName].reviews++;
+
       if (ctor.events.length < 100) {
         ctor.events.push({
           id: `rev-${rev.id}`,
@@ -241,6 +296,21 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       const dateStr = dateObj.toISOString().split('T')[0];
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
+
+      if (!ctor.repos[repoName]) {
+        ctor.repos[repoName] = {
+          commits: 0,
+          prs: 0,
+          prsMerged: 0,
+          prsClosed: 0,
+          reviews: 0,
+          issues: 0,
+          linesAdded: 0,
+          linesDeleted: 0,
+          linesChanged: 0
+        };
+      }
+      ctor.repos[repoName].issues++;
 
       if (ctor.events.length < 100) {
         ctor.events.push({
@@ -274,6 +344,12 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       name,
       commits: stats.commits,
       prs: stats.prs,
+      prsMerged: stats.prsMerged,
+      prsClosed: stats.prsClosed,
+      reviews: stats.reviews,
+      issues: stats.issues,
+      linesAdded: stats.linesAdded,
+      linesDeleted: stats.linesDeleted,
       linesChanged: stats.linesChanged
     }));
 

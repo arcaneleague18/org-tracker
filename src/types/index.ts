@@ -19,6 +19,12 @@ export interface RepoContribution {
   name: string;
   commits: number;
   prs: number;
+  prsMerged?: number;
+  prsClosed?: number;
+  reviews?: number;
+  issues?: number;
+  linesAdded?: number;
+  linesDeleted?: number;
   linesChanged: number;
 }
 
@@ -104,5 +110,4 @@ export interface SyncStatus {
 export interface GitHubCredentials {
   token: string;
   org: string;
-  excludedRepos?: string[];
 }

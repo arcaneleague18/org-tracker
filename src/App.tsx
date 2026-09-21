@@ -5,7 +5,9 @@ import {
   OrgOverview,
   DateRangeOption,
   SyncStatus,
-  GitHubCredentials
+  GitHubCredentials,
+  PunchcardSlot,
+  DailyActivityPoint
 } from './types';
 import { cacheService } from './services/cacheService';
 import { githubApi, getLatestRateLimit, RawCommit, RawPull, RawReview, RawIssue } from './services/githubApi';
@@ -39,22 +41,17 @@ export const App: React.FC = () => {
   const [dateRange, setDateRange] = useState<DateRangeOption>('90d');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => cacheService.getTheme());
 
-  const activeExcludedRepos = useMemo(() => {
-    return credentials.excludedRepos || cacheService.getExcludedRepos();
-  }, [credentials.excludedRepos]);
+  // Excluded repos -- client-side filter, persisted to localStorage
+  const [excludedRepos, setExcludedRepos] = useState<string[]>(() => cacheService.getExcludedRepos());
 
-  const [contributors, setContributors] = useState<ContributorStats[]>(() => {
-    const raw = cacheService.getCachedData()?.contributors ?? [];
-    return raw.map((c) => ({
-      ...c,
-      repositories: c.repositories.filter((r) => !cacheService.isRepoExcluded(r.name))
-    }));
+  // Raw cached data (ALL repos, unfiltered)
+  const [rawContributors, setRawContributors] = useState<ContributorStats[]>(() => {
+    return cacheService.getCachedData()?.contributors ?? [];
   });
-  const [repositories, setRepositories] = useState<RepositorySummary[]>(() => {
-    const raw = cacheService.getCachedData()?.repositories ?? [];
-    return raw.filter((r) => !cacheService.isRepoExcluded(r.name));
+  const [rawRepositories, setRawRepositories] = useState<RepositorySummary[]>(() => {
+    return cacheService.getCachedData()?.repositories ?? [];
   });
-  const [overview, setOverview] = useState<OrgOverview>(() => {
+  const [rawOverview, setRawOverview] = useState<OrgOverview>(() => {
     return cacheService.getCachedData()?.overview ?? emptyOrgOverview;
   });
 
@@ -73,6 +70,241 @@ export const App: React.FC = () => {
     errorMessage: null
   });
 
+  // --- Derived filtered data (useMemo, instant recomputation) ---
+
+  const excludedSet = useMemo(() => {
+    return new Set(excludedRepos.map((r) => r.trim().toLowerCase()));
+  }, [excludedRepos]);
+
+  const allRepoNames = useMemo(() => {
+    return rawRepositories.map((r) => r.name).sort((a, b) => a.localeCompare(b));
+  }, [rawRepositories]);
+
+  // Filtered contributors: calculate exact stats for included repos,
+  // recompute impact scores, sort, re-rank (rankings/placeings),
+  // and filter out contributors who have no activity in the included repos.
+  const contributors = useMemo((): ContributorStats[] => {
+    if (excludedSet.size === 0) return rawContributors;
+
+    // 1. Process each contributor against included repos
+    const list = rawContributors
+      .map((c) => {
+        const filteredRepos = c.repositories.filter(
+          (r) => !excludedSet.has(r.name.toLowerCase())
+        );
+        const filteredActivity = c.recentActivity.filter(
+          (a) => !excludedSet.has(a.repo.toLowerCase())
+        );
+
+        // If contributor has no repos and no activity in included repos, omit them
+        if (filteredRepos.length === 0 && filteredActivity.length === 0) {
+          return null;
+        }
+
+        // Exact totals from included repos
+        const commitsCount = filteredRepos.reduce((s, r) => s + (r.commits || 0), 0);
+        const prsCreated = filteredRepos.reduce((s, r) => s + (r.prs || 0), 0);
+
+        // Fallback to counting from filteredActivity if prsMerged/reviews/issues not on cached repo
+        const prsMerged = filteredRepos.reduce(
+          (s, r) =>
+            s +
+            (r.prsMerged !== undefined
+              ? r.prsMerged
+              : filteredActivity.filter(
+                  (a) => a.repo.toLowerCase() === r.name.toLowerCase() && a.type === 'pr_merged'
+                ).length),
+          0
+        );
+
+        const prsClosed = filteredRepos.reduce(
+          (s, r) =>
+            s +
+            (r.prsClosed !== undefined
+              ? r.prsClosed
+              : filteredActivity.filter(
+                  (a) => a.repo.toLowerCase() === r.name.toLowerCase() && a.type === 'pr_opened'
+                ).length),
+          0
+        );
+
+        const reviewsCount = filteredRepos.reduce(
+          (s, r) =>
+            s +
+            (r.reviews !== undefined
+              ? r.reviews
+              : filteredActivity.filter(
+                  (a) => a.repo.toLowerCase() === r.name.toLowerCase() && a.type === 'review'
+                ).length),
+          0
+        );
+
+        const issuesCount = filteredRepos.reduce(
+          (s, r) =>
+            s +
+            (r.issues !== undefined
+              ? r.issues
+              : filteredActivity.filter(
+                  (a) => a.repo.toLowerCase() === r.name.toLowerCase() && a.type === 'issue'
+                ).length),
+          0
+        );
+
+        const linesAdded = filteredRepos.reduce(
+          (s, r) => s + (r.linesAdded ?? Math.round((r.linesChanged || 0) * 0.75)),
+          0
+        );
+
+        const linesDeleted = filteredRepos.reduce(
+          (s, r) => s + (r.linesDeleted ?? Math.round((r.linesChanged || 0) * 0.25)),
+          0
+        );
+
+        // Raw impact formula matching dataAggregator.ts:
+        // commitsCount * 3 + prsMerged * 5 + reviewsCount * 4 + issuesCount * 2 + Math.round((linesAdded + linesDeleted) / 250)
+        const rawImpactScore =
+          commitsCount * 3 +
+          prsMerged * 5 +
+          reviewsCount * 4 +
+          issuesCount * 2 +
+          Math.round((linesAdded + linesDeleted) / 250);
+
+        // Recompute punchcard for included repos
+        const punchMap: Record<string, { count: number; dates: Set<string> }> = {};
+        for (let day = 0; day < 7; day++) {
+          for (let hour = 0; hour < 24; hour++) {
+            punchMap[`${day}-${hour}`] = { count: 0, dates: new Set<string>() };
+          }
+        }
+        const activeDatesSet = new Set<string>();
+        const activityByDate: Record<string, number> = {};
+
+        for (const ev of filteredActivity) {
+          const dateStr = ev.dateStr || (ev.isoDate ? ev.isoDate.split('T')[0] : '');
+          if (dateStr) {
+            activeDatesSet.add(dateStr);
+            activityByDate[dateStr] = (activityByDate[dateStr] || 0) + 1;
+          }
+          if (typeof ev.dayOfWeek === 'number' && typeof ev.hour === 'number') {
+            const key = `${ev.dayOfWeek}-${ev.hour}`;
+            if (punchMap[key]) {
+              punchMap[key].count++;
+              if (dateStr) punchMap[key].dates.add(dateStr);
+            }
+          }
+        }
+
+        const punchcardSlots: PunchcardSlot[] = [];
+        for (let day = 0; day < 7; day++) {
+          for (let hour = 0; hour < 24; hour++) {
+            const slot = punchMap[`${day}-${hour}`];
+            punchcardSlots.push({
+              day,
+              hour,
+              count: slot.count,
+              dates: Array.from(slot.dates).sort()
+            });
+          }
+        }
+
+        return {
+          ...c,
+          commitsCount,
+          prsCreated,
+          prsMerged,
+          prsClosed,
+          reviewsCount,
+          issuesCount,
+          linesAdded,
+          linesDeleted,
+          impactScore: rawImpactScore, // temporary raw score for sorting
+          activeDays: activeDatesSet.size || (filteredRepos.length > 0 ? 1 : 0),
+          repositories: filteredRepos.sort((a, b) => (b.commits || 0) - (a.commits || 0)),
+          recentActivity: filteredActivity,
+          punchcard: punchcardSlots,
+          activityByDate
+        };
+      })
+      .filter((c): c is ContributorStats => c !== null);
+
+    // 2. Sort by raw impact score descending (ties broken by commits, then login)
+    list.sort((a, b) => {
+      if (b.impactScore !== a.impactScore) {
+        return b.impactScore - a.impactScore;
+      }
+      if (b.commitsCount !== a.commitsCount) {
+        return b.commitsCount - a.commitsCount;
+      }
+      return a.login.localeCompare(b.login);
+    });
+
+    // 3. Normalize impact score to 0 - 100 with 1 decimal place and assign ranks (rankings / placeings)
+    const maxScore = list[0]?.impactScore || 1;
+    list.forEach((c, idx) => {
+      c.rank = idx + 1;
+      c.impactScore = maxScore > 0 ? Number(((c.impactScore / maxScore) * 100).toFixed(1)) : 0;
+    });
+
+    return list;
+  }, [rawContributors, excludedSet]);
+
+  const repositories = useMemo(() => {
+    if (excludedSet.size === 0) return rawRepositories;
+    return rawRepositories.filter((r) => !excludedSet.has(r.name.toLowerCase()));
+  }, [rawRepositories, excludedSet]);
+
+  const overview = useMemo((): OrgOverview => {
+    if (excludedSet.size === 0) return rawOverview;
+    // Recalculate overview from filtered data
+    const totalCommits = contributors.reduce((s, c) => s + c.commitsCount, 0);
+    const totalPrs = contributors.reduce((s, c) => s + c.prsCreated, 0);
+    const totalPrsMerged = contributors.reduce((s, c) => s + c.prsMerged, 0);
+    const totalReviews = contributors.reduce((s, c) => s + c.reviewsCount, 0);
+    const totalIssues = contributors.reduce((s, c) => s + c.issuesCount, 0);
+    const totalLinesAdded = contributors.reduce((s, c) => s + c.linesAdded, 0);
+    const totalLinesDeleted = contributors.reduce((s, c) => s + c.linesDeleted, 0);
+    const activeContributors = contributors.filter((c) => c.commitsCount > 0 || c.prsCreated > 0);
+
+    // Reconstruct daily activity from filtered events
+    const dailyMap: Record<string, { commits: number; prs: number; reviews: number }> = {};
+    for (const c of contributors) {
+      for (const ev of c.recentActivity) {
+        const dateStr = ev.dateStr || (ev.isoDate ? ev.isoDate.split('T')[0] : '');
+        if (!dateStr) continue;
+        if (!dailyMap[dateStr]) {
+          dailyMap[dateStr] = { commits: 0, prs: 0, reviews: 0 };
+        }
+        if (ev.type === 'commit') dailyMap[dateStr].commits++;
+        else if (ev.type === 'pr_opened' || ev.type === 'pr_merged') dailyMap[dateStr].prs++;
+        else if (ev.type === 'review') dailyMap[dateStr].reviews++;
+      }
+    }
+
+    const sortedDates = Object.keys(dailyMap).sort();
+    const dailyActivity: DailyActivityPoint[] = sortedDates.map((date) => ({
+      date,
+      commits: dailyMap[date].commits,
+      prs: dailyMap[date].prs,
+      reviews: dailyMap[date].reviews,
+      total: dailyMap[date].commits + dailyMap[date].prs + dailyMap[date].reviews
+    }));
+
+    return {
+      ...rawOverview,
+      totalContributors: activeContributors.length,
+      totalCommits,
+      totalPrs,
+      totalPrsMerged,
+      totalReviews,
+      totalIssues,
+      totalLinesAdded,
+      totalLinesDeleted,
+      activeReposCount: repositories.length,
+      reviewParticipationRate: totalPrs > 0 ? Math.round((totalReviews / totalPrs) * 100) : 0,
+      dailyActivity: dailyActivity.length > 0 ? dailyActivity : rawOverview.dailyActivity
+    };
+  }, [rawOverview, contributors, repositories, excludedSet]);
+
   // Apply theme class to body
   useEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
@@ -90,7 +322,7 @@ export const App: React.FC = () => {
     return overview.dailyActivity.slice(-daysToInclude);
   }, [overview.dailyActivity, dateRange]);
 
-  // Live Sync Trigger
+  // Live Sync Trigger -- fetches ALL repos (no exclusion during fetch)
   const handleTriggerSync = useCallback(async () => {
     if (!credentials.token) {
       setIsSettingsOpen(true);
@@ -122,10 +354,8 @@ export const App: React.FC = () => {
         rateLimitRemaining: getLatestRateLimit()?.remaining ?? null
       }));
 
-      // 2. Fetch Repositories
-      const allRepos = await githubApi.fetchOrgRepos(token, org);
-      const excludedList = credentials.excludedRepos || cacheService.getExcludedRepos();
-      const repos = allRepos.filter((r) => !cacheService.isRepoExcluded(r.name, excludedList));
+      // 2. Fetch ALL Repositories (no exclusion filter)
+      const repos = await githubApi.fetchOrgRepos(token, org);
       const commitsByRepo: Record<string, RawCommit[]> = {};
       const pullsByRepo: Record<string, RawPull[]> = {};
       const reviewsByRepoPull: Record<string, RawReview[]> = {};
@@ -189,9 +419,10 @@ export const App: React.FC = () => {
         org
       );
 
-      setContributors(aggregated.contributors);
-      setRepositories(aggregated.repositories);
-      setOverview(aggregated.overview);
+      // Store raw unfiltered data
+      setRawContributors(aggregated.contributors);
+      setRawRepositories(aggregated.repositories);
+      setRawOverview(aggregated.overview);
 
       cacheService.saveCachedData(aggregated);
 
@@ -218,10 +449,10 @@ export const App: React.FC = () => {
     }
   }, [credentials, dateRange, syncStatus.lastSyncedAt]);
 
-  // Auto-sync on load if token is available and (no cached data exists OR excluded repos changed)
+  // Auto-sync on load if token is available and no cached data exists
   useEffect(() => {
     if (credentials.token && !syncStatus.isSyncing) {
-      if (contributors.length === 0 || cacheService.hasExcludedReposChanged()) {
+      if (rawContributors.length === 0) {
         handleTriggerSync();
       }
     }
@@ -253,15 +484,43 @@ export const App: React.FC = () => {
     cacheService.clearCache();
     const envToken = cacheService.getEnvToken();
     setCredentials({ token: envToken, org: 'Move2Move' });
-    setContributors([]);
-    setRepositories([]);
-    setOverview(emptyOrgOverview);
+    setRawContributors([]);
+    setRawRepositories([]);
+    setRawOverview(emptyOrgOverview);
     if (envToken) {
       setTimeout(() => {
         handleTriggerSync();
       }, 100);
     }
   };
+
+  // --- Repo Exclusion Handlers ---
+
+  const handleToggleRepoExclusion = useCallback((repoName: string) => {
+    setExcludedRepos((prev) => {
+      const lower = repoName.trim().toLowerCase();
+      const isCurrentlyExcluded = prev.some((r) => r.trim().toLowerCase() === lower);
+      let next: string[];
+      if (isCurrentlyExcluded) {
+        next = prev.filter((r) => r.trim().toLowerCase() !== lower);
+      } else {
+        next = [...prev, repoName.trim()];
+      }
+      cacheService.saveExcludedRepos(next);
+      return next;
+    });
+  }, []);
+
+  const handleSetAllReposIncluded = useCallback(() => {
+    setExcludedRepos([]);
+    cacheService.saveExcludedRepos([]);
+  }, []);
+
+  const handleSetAllReposExcluded = useCallback(() => {
+    const all = rawRepositories.map((r) => r.name);
+    setExcludedRepos(all);
+    cacheService.saveExcludedRepos(all);
+  }, [rawRepositories]);
 
   const handleExportCsv = () => {
     if (contributors.length === 0) return;
@@ -323,7 +582,11 @@ export const App: React.FC = () => {
         hasToken={Boolean(credentials.token)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
-        excludedCount={activeExcludedRepos.length}
+        allRepoNames={allRepoNames}
+        excludedRepos={excludedRepos}
+        onToggleRepoExclusion={handleToggleRepoExclusion}
+        onIncludeAllRepos={handleSetAllReposIncluded}
+        onExcludeAllRepos={handleSetAllReposExcluded}
       />
 
       {/* Main Tactical Canvas */}
@@ -420,7 +683,10 @@ export const App: React.FC = () => {
       {/* Declassified Contributor Dossier Modal */}
       {selectedContributor && (
         <ContributorDetailModal
-          contributor={selectedContributor}
+          contributor={
+            contributors.find((c) => c.login.toLowerCase() === selectedContributor.login.toLowerCase()) ||
+            selectedContributor
+          }
           onClose={() => setSelectedContributor(null)}
         />
       )}
@@ -432,7 +698,6 @@ export const App: React.FC = () => {
           onSave={handleSaveCredentials}
           onClear={handleClearCredentials}
           onClose={() => setIsSettingsOpen(false)}
-          envExcludedRepos={cacheService.getEnvExcludedRepos()}
         />
       )}
 

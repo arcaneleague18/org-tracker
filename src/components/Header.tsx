@@ -1,6 +1,7 @@
 import React from 'react';
 import { DateRangeOption, SyncStatus } from '../types';
 import { RefreshIcon, SettingsIcon, LockIcon, DownloadIcon } from './Icons';
+import { RepoFilterDropdown } from './RepoFilterDropdown';
 
 interface HeaderProps {
   orgName: string;
@@ -13,7 +14,11 @@ interface HeaderProps {
   hasToken: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
-  excludedCount?: number;
+  allRepoNames: string[];
+  excludedRepos: string[];
+  onToggleRepoExclusion: (repoName: string) => void;
+  onIncludeAllRepos: () => void;
+  onExcludeAllRepos: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,7 +32,11 @@ export const Header: React.FC<HeaderProps> = ({
   hasToken,
   theme,
   onToggleTheme,
-  excludedCount = 0
+  allRepoNames,
+  excludedRepos,
+  onToggleRepoExclusion,
+  onIncludeAllRepos,
+  onExcludeAllRepos
 }) => {
   return (
     <header className="header-tactical">
@@ -125,6 +134,14 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>{theme === 'dark' ? '[THEME: LIGHT]' : '[THEME: DARK]'}</span>
               </button>
 
+              <RepoFilterDropdown
+                allRepoNames={allRepoNames}
+                excludedRepos={excludedRepos}
+                onToggleRepo={onToggleRepoExclusion}
+                onIncludeAll={onIncludeAllRepos}
+                onExcludeAll={onExcludeAllRepos}
+              />
+
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -160,11 +177,11 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
           )}
-          {excludedCount > 0 && (
+          {excludedRepos.length > 0 && (
             <div className="register-item">
               <span className="reg-key">FILTER_EXCLUSIONS:</span>
               <span className="reg-val font-mono quota-highlight">
-                [{excludedCount} REPOS EXCLUDED]
+                [{excludedRepos.length} REPOS EXCLUDED]
               </span>
             </div>
           )}

@@ -9,23 +9,18 @@ interface SettingsModalProps {
   onSave: (credentials: GitHubCredentials) => void;
   onClear: () => void;
   onClose: () => void;
-  envExcludedRepos?: string[];
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   initialCredentials,
   onSave,
   onClear,
-  onClose,
-  envExcludedRepos = []
+  onClose
 }) => {
   const envToken = cacheService.getEnvToken();
   const hasEnv = Boolean(envToken);
   const [tokenOverride, setTokenOverride] = useState(() => cacheService.getOverrideToken());
   const [org, setOrg] = useState(initialCredentials.org || 'Move2Move');
-  const [excludedText, setExcludedText] = useState(() => {
-    return (initialCredentials.excludedRepos || []).join(', ');
-  });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -75,14 +70,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    const parsedExcluded = excludedText
-      .split(',')
-      .map((s) => s.replace(/["']/g, '').trim())
-      .filter(Boolean);
     onSave({
       token: tokenOverride.trim(),
-      org: org.trim(),
-      excludedRepos: parsedExcluded
+      org: org.trim()
     });
     onClose();
   };
@@ -90,7 +80,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleClear = () => {
     setTokenOverride('');
     cacheService.clearTokenOverride();
-    setExcludedText('');
     setTestResult(null);
     onClear();
   };
@@ -105,7 +94,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="telemetry-eyebrow">SYSTEM // CONFIGURATION</span>
               <h3 className="macro-title settings-title">System Configuration</h3>
               <p className="settings-desc">
-                [ ACCESS_PROTOCOL: GITHUB_REST_V3 // CREDENTIALS &amp; REPOSITORY_FILTERS ]
+                [ ACCESS_PROTOCOL: GITHUB_REST_V3 // CREDENTIALS ]
               </p>
             </div>
             <button type="button" onClick={onClose} className="btn-tactical btn-close">
@@ -190,33 +179,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </button>
                 )}
               </div>
-            </div>
-
-            <div className="tactical-field-group">
-              <div className="field-label-row">
-                <label className="field-label" htmlFor="excluded-repos">
-                  [ EXCLUDED_REPOSITORIES_FILTER ]
-                </label>
-                {envExcludedRepos.length > 0 && (
-                  <span className="env-badge font-mono">[.ENV ACTIVE]</span>
-                )}
-              </div>
-              <input
-                id="excluded-repos"
-                type="text"
-                value={excludedText}
-                onChange={(e) => setExcludedText(e.target.value)}
-                placeholder="demo-repository, .github, test-repo"
-                className="tactical-text-input"
-              />
-              <span className="field-help">
-                COMMA-SEPARATED REPOSITORY NAMES TO EXCLUDE FROM METRICS &amp; TELEMETRY. CAN ALSO BE SET VIA <code>VITE_EXCLUDED_REPOS</code> IN <code>.env</code>.
-              </span>
-              {envExcludedRepos.length > 0 && (
-                <span className="field-env-active font-mono">
-                  CONFIGURED IN .ENV: {envExcludedRepos.join(', ')}
-                </span>
-              )}
             </div>
 
             {/* Protocol Manual */}

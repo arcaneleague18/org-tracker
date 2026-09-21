@@ -207,6 +207,8 @@ body.theme-light::after {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   border: 1px solid var(--border-bright);
   background: var(--bg-cell);
