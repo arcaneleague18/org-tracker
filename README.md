@@ -125,8 +125,7 @@ org-tracker/
     ├── services/
     │   ├── githubApi.ts           # GitHub REST API client & rate limiter
     │   ├── dataAggregator.ts      # Metric calculation & impact scoring
-    │   ├── cacheService.ts        # LocalStorage and credentials storage
-    │   └── mockData.ts            # Simulated Move2Move team data for Demo Mode
+    │   └── cacheService.ts        # LocalStorage and credentials storage
     └── components/
         ├── Icons.tsx              # Clean SVG icons
         ├── Header.tsx             # App bar, live status, time filters, and actions

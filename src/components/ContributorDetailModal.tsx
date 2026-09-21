@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { ContributorStats } from '../types';
+import React, { useState, useEffect } from 'react';
+import { ContributorStats, ActivityEvent } from '../types';
 import { ArrowUpRightIcon } from './Icons';
 
 interface ContributorDetailModalProps {
@@ -11,6 +11,12 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   contributor,
   onClose
 }) => {
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedDayIndex(null);
+  }, [contributor?.login]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -24,6 +30,39 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   const daysOfWeek = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   const maxPunch = Math.max(...contributor.punchcard.map((s) => s.count), 1);
   const totalRepoCommits = contributor.repositories.reduce((acc, r) => acc + r.commits, 0) || 1;
+
+  const getEventDayOfWeek = (event: ActivityEvent): number => {
+    if (typeof event.dayOfWeek === 'number' && event.dayOfWeek >= 0 && event.dayOfWeek <= 6) {
+      return event.dayOfWeek;
+    }
+    if (event.isoDate) {
+      const d = new Date(event.isoDate);
+      if (!isNaN(d.getTime())) {
+        return d.getDay();
+      }
+    }
+    if (event.timestamp) {
+      const d = new Date(event.timestamp);
+      if (!isNaN(d.getTime())) {
+        return d.getDay();
+      }
+      const parts = event.timestamp.split(/[/.-]/).map(Number);
+      if (parts.length === 3) {
+        if (parts[0] > 12) {
+          const fallbackDate = new Date(parts[2], parts[1] - 1, parts[0]);
+          if (!isNaN(fallbackDate.getTime())) return fallbackDate.getDay();
+        } else {
+          const fallbackDate = new Date(parts[2], parts[0] - 1, parts[1]);
+          if (!isNaN(fallbackDate.getTime())) return fallbackDate.getDay();
+        }
+      }
+    }
+    return -1;
+  };
+
+  const filteredEvents = selectedDayIndex === null
+    ? contributor.recentActivity
+    : contributor.recentActivity.filter((event) => getEventDayOfWeek(event) === selectedDayIndex);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -123,15 +162,39 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
 
           {/* 7x24 Hourly Punchcard Matrix */}
           <div className="dossier-section">
-            <div className="section-title-strip">
+            <div className="section-title-strip flex-between">
               <span>// HOURLY_PUNCHCARD_RADAR [00:00 TO 23:00 UTC]</span>
+              {selectedDayIndex !== null && (
+                <span className="punchcard-filter-indicator">
+                  [ACTIVE_DAY: {daysOfWeek[selectedDayIndex]}]
+                </span>
+              )}
             </div>
             <div className="punchcard-console">
               {daysOfWeek.map((dayName, dayIndex) => {
                 const daySlots = contributor.punchcard.filter((s) => s.day === dayIndex);
+                const isSelected = selectedDayIndex === dayIndex;
+                const isAnySelected = selectedDayIndex !== null;
+                const totalDayActions = daySlots.reduce((acc, s) => acc + s.count, 0);
+
                 return (
-                  <div key={dayName} className="punch-console-row">
-                    <span className="punch-day-code">{dayName}</span>
+                  <div
+                    key={dayName}
+                    className={`punch-console-row ${isSelected ? 'row-selected' : ''} ${isAnySelected && !isSelected ? 'row-dimmed' : ''}`}
+                    onClick={() => setSelectedDayIndex(isSelected ? null : dayIndex)}
+                    role="button"
+                    tabIndex={0}
+                    title={`CLICK TO ${isSelected ? 'CLEAR FILTER' : `FILTER BY ${dayName}`} [${totalDayActions} ACTIONS RECORDED]`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedDayIndex(isSelected ? null : dayIndex);
+                      }
+                    }}
+                  >
+                    <span className={`punch-day-code ${isSelected ? 'day-code-selected' : ''}`}>
+                      {dayName}
+                    </span>
                     <div className="punch-grid-track">
                       {daySlots.map((slot) => {
                         const getPunchIntensityClass = (count: number) => {
@@ -147,7 +210,7 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                           <div
                             key={slot.hour}
                             className={`punch-square ${getPunchIntensityClass(slot.count)}`}
-                            title={`${dayName} @ ${slot.hour}:00 - ${slot.count} ACTIONS`}
+                            title={`${dayName} @ ${slot.hour.toString().padStart(2, '0')}:00 UTC // ${slot.count} ACTIONS`}
                           />
                         );
                       })}
@@ -178,14 +241,35 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
 
           {/* Recent Chronological Audit Log */}
           <div className="dossier-section">
-            <div className="section-title-strip">
-              <span>// CHRONOLOGICAL_ACTION_LOG</span>
+            <div className="section-title-strip action-log-header-strip">
+              <div className="action-log-header-left">
+                <span>// CHRONOLOGICAL_ACTION_LOG</span>
+                {selectedDayIndex !== null && (
+                  <span className="action-log-filter-tag">
+                    [FILTER: {daysOfWeek[selectedDayIndex]} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
+                  </span>
+                )}
+              </div>
+              <div className="action-log-header-right">
+                <button
+                  type="button"
+                  className={`btn-tactical btn-action-all ${selectedDayIndex === null ? 'active' : ''}`}
+                  onClick={() => setSelectedDayIndex(null)}
+                  title="VIEW ALL CONTRIBUTIONS"
+                >
+                  [ALL]
+                </button>
+              </div>
             </div>
             <div className="action-log-stream">
-              {contributor.recentActivity.length === 0 ? (
-                <p className="no-events-prompt">[ NO RECORDED ACTIONS IN CURRENT WINDOW ]</p>
+              {filteredEvents.length === 0 ? (
+                <p className="no-events-prompt">
+                  {selectedDayIndex !== null
+                    ? `[ ZERO RECORDED ACTIONS ON ${daysOfWeek[selectedDayIndex]} ]`
+                    : '[ NO RECORDED ACTIONS IN CURRENT WINDOW ]'}
+                </p>
               ) : (
-                contributor.recentActivity.map((event) => (
+                filteredEvents.map((event) => (
                   <div key={event.id} className="log-item">
                     <span className="log-type-tag">
                       [{event.type.toUpperCase()}]
@@ -312,6 +396,17 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           border-bottom: 1px solid var(--border-tactical);
           padding-bottom: 0.35rem;
         }
+        .flex-between {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .punchcard-filter-indicator {
+          color: var(--accent-radar);
+          font-size: 0.62rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+        }
         .repo-footprint-table {
           display: flex;
           flex-direction: column;
@@ -360,12 +455,37 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           display: flex;
           align-items: center;
           gap: 0.5rem;
+          padding: 2px 4px;
+          cursor: pointer;
+          transition: background 0.15s ease, opacity 0.15s ease, border-left 0.15s ease;
+          border-left: 2px solid transparent;
+          user-select: none;
+        }
+        .punch-console-row:hover {
+          background: rgba(255, 255, 255, 0.04);
+          border-left-color: var(--border-bright);
+        }
+        .punch-console-row.row-selected {
+          background: var(--accent-radar-dim);
+          border-left-color: var(--accent-radar);
+        }
+        .punch-console-row.row-dimmed {
+          opacity: 0.38;
+        }
+        .punch-console-row.row-dimmed:hover {
+          opacity: 0.85;
         }
         .punch-day-code {
           width: 32px;
           font-size: 0.65rem;
           color: var(--text-dim);
           font-weight: 700;
+          transition: color 0.15s ease;
+        }
+        .punch-day-code.day-code-selected {
+          color: var(--accent-radar);
+          font-weight: 900;
+          text-shadow: 0 0 6px var(--accent-radar);
         }
         .punch-grid-track {
           display: flex;
@@ -413,6 +533,52 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           font-size: 0.65rem;
         }
 
+        .action-log-header-strip {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 0.35rem;
+        }
+        .action-log-header-left {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          flex-wrap: wrap;
+        }
+        .action-log-filter-tag {
+          color: var(--accent-radar);
+          font-size: 0.62rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          background: var(--accent-radar-dim);
+          border: 1px solid var(--accent-radar);
+          padding: 1px 6px;
+        }
+        .action-log-header-right {
+          display: flex;
+          align-items: center;
+        }
+        .btn-action-all {
+          font-size: 0.65rem;
+          font-weight: 700;
+          padding: 2px 10px;
+          letter-spacing: 0.06em;
+          cursor: pointer;
+          background: transparent;
+          color: var(--text-dim);
+          border: 1px solid var(--border-tactical);
+          transition: all 0.15s ease;
+        }
+        .btn-action-all:hover {
+          color: var(--text-phosphor);
+          border-color: var(--border-bright);
+        }
+        .btn-action-all.active {
+          background: var(--text-phosphor);
+          color: var(--bg-crt);
+          border-color: var(--text-phosphor);
+        }
+
         .action-log-stream {
           display: flex;
           flex-direction: column;
@@ -429,7 +595,7 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           gap: 0.6rem;
           font-size: 0.7rem;
           padding: 0.35rem 0;
-          border-bottom: 1px solid #1a1a1a;
+          border-bottom: 1px solid var(--border-tactical);
         }
         .log-type-tag {
           color: var(--accent-hazard);

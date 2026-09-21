@@ -138,13 +138,16 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.repos[repoName].commits++;
       ctor.repos[repoName].linesChanged += estimatedAdded + estimatedDeleted;
 
-      if (ctor.events.length < 15) {
+      if (ctor.events.length < 100) {
         ctor.events.push({
           id: `commit-${c.sha.substring(0, 7)}`,
           type: 'commit',
           title: c.commit.message.split('\n')[0],
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
+          isoDate: dateObj.toISOString(),
+          dayOfWeek: dateObj.getDay(),
+          hour: dateObj.getHours(),
           url: c.html_url
         });
       }
@@ -175,13 +178,16 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       }
       ctor.repos[repoName].prs++;
 
-      if (ctor.events.length < 20) {
+      if (ctor.events.length < 100) {
         ctor.events.push({
           id: `pr-${pr.number}`,
           type: pr.merged_at ? 'pr_merged' : 'pr_opened',
           title: `${pr.merged_at ? 'Merged' : 'Opened'} PR #${pr.number}: ${pr.title}`,
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
+          isoDate: dateObj.toISOString(),
+          dayOfWeek: dateObj.getDay(),
+          hour: dateObj.getHours(),
           url: pr.html_url
         });
       }
@@ -202,13 +208,16 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
       recordDailyPoint(dateStr, 'reviews');
 
-      if (ctor.events.length < 25) {
+      if (ctor.events.length < 100) {
         ctor.events.push({
           id: `rev-${rev.id}`,
           type: 'review',
           title: `Reviewed code on ${repoName} (${rev.state.toLowerCase()})`,
           repo: repoName,
-          timestamp: dateObj.toLocaleDateString()
+          timestamp: dateObj.toLocaleDateString(),
+          isoDate: dateObj.toISOString(),
+          dayOfWeek: dateObj.getDay(),
+          hour: dateObj.getHours()
         });
       }
     }
@@ -226,13 +235,16 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
 
-      if (ctor.events.length < 30) {
+      if (ctor.events.length < 100) {
         ctor.events.push({
           id: `iss-${iss.number}`,
           type: 'issue',
           title: `Created Issue #${iss.number}: ${iss.title}`,
           repo: repoName,
-          timestamp: dateObj.toLocaleDateString()
+          timestamp: dateObj.toLocaleDateString(),
+          isoDate: dateObj.toISOString(),
+          dayOfWeek: dateObj.getDay(),
+          hour: dateObj.getHours()
         });
       }
     }
@@ -263,6 +275,13 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       c.issuesCount * 2 +
       Math.round((c.linesAdded + c.linesDeleted) / 250);
 
+    // Sort recent activity newest first
+    const sortedActivity = [...c.events].sort((a, b) => {
+      const timeA = a.isoDate ? new Date(a.isoDate).getTime() : new Date(a.timestamp).getTime();
+      const timeB = b.isoDate ? new Date(b.isoDate).getTime() : new Date(b.timestamp).getTime();
+      return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+    });
+
     return {
       login: c.login,
       name: c.name,
@@ -281,7 +300,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       rank: 0,
       activeDays: c.activeDates.size,
       repositories: reposList.sort((a, b) => b.commits - a.commits),
-      recentActivity: c.events,
+      recentActivity: sortedActivity,
       punchcard: punchcardSlots,
       activityByDate: c.activityByDate
     };

@@ -9,6 +9,9 @@ export interface ActivityEvent {
   repo: string;
   timestamp: string;
   url?: string;
+  isoDate?: string;
+  dayOfWeek?: number; // 0 (Sun) to 6 (Sat)
+  hour?: number; // 0 to 23
 }
 
 export interface RepoContribution {
