@@ -46,7 +46,17 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
   const [activeHoverPoint, setActiveHoverPoint] = useState<CalendarDay | null>(null);
 
   // 1. Build a full 53-week (371 days) calendar grid ending on the current week
-  const { weeks, monthLabels, totalCommits, totalPrs, totalReviews, totalContributions, maxEvents } = useMemo(() => {
+  const {
+    weeks,
+    monthLabels,
+    totalCommits,
+    totalPrs,
+    totalReviews,
+    totalContributions,
+    maxEvents,
+    currentStreak,
+    maxStreak
+  } = useMemo(() => {
     const activityMap = new Map<string, DailyActivityPoint>();
     for (const p of dailyActivity) {
       activityMap.set(p.date, p);
@@ -129,6 +139,57 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
       }
     });
 
+    // 3. Calculate streak counts (current streak and longest/max streak)
+    const chronologicalDays: CalendarDay[] = [];
+    for (const w of weeksList) {
+      for (const d of w.days) {
+        if (!d.isFuture) {
+          chronologicalDays.push(d);
+        }
+      }
+    }
+
+    let maxStreak = 0;
+    let runningStreak = 0;
+
+    for (const day of chronologicalDays) {
+      if (day.total > 0) {
+        runningStreak++;
+        if (runningStreak > maxStreak) {
+          maxStreak = runningStreak;
+        }
+      } else {
+        runningStreak = 0;
+      }
+    }
+
+    let currentStreak = 0;
+    const n = chronologicalDays.length;
+    if (n > 0) {
+      const todayDay = chronologicalDays[n - 1];
+      const yesterdayDay = n >= 2 ? chronologicalDays[n - 2] : null;
+
+      // If today has activity, streak starts from today and counts backwards.
+      // If today has 0 activity but yesterday had activity, streak is still active starting from yesterday.
+      // If neither today nor yesterday had activity, current streak is 0.
+      let startIdx = -1;
+      if (todayDay.total > 0) {
+        startIdx = n - 1;
+      } else if (yesterdayDay && yesterdayDay.total > 0) {
+        startIdx = n - 2;
+      }
+
+      if (startIdx >= 0) {
+        for (let i = startIdx; i >= 0; i--) {
+          if (chronologicalDays[i].total > 0) {
+            currentStreak++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
     return {
       weeks: weeksList,
       monthLabels: labels,
@@ -136,7 +197,9 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
       totalPrs: prsCount,
       totalReviews: reviewsCount,
       totalContributions: totalBurstCount,
-      maxEvents: maxDaily > 0 ? maxDaily : 1
+      maxEvents: maxDaily > 0 ? maxDaily : 1,
+      currentStreak,
+      maxStreak
     };
   }, [dailyActivity]);
 
@@ -172,6 +235,27 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           </div>
 
           <div className="telemetry-stat-pills font-mono">
+            <div
+              className={`telemetry-data-block ${currentStreak > 0 ? 'telemetry-data-block-active' : ''}`}
+              title={`Current active contribution streak: ${currentStreak} days | Longest streak: ${maxStreak} days`}
+            >
+              <span className="tdb-key">CURRENT_STREAK:</span>
+              <span
+                className="tdb-val"
+                style={{ color: currentStreak > 0 ? 'var(--accent-radar)' : undefined }}
+              >
+                {currentStreak} {currentStreak === 1 ? 'DAY' : 'DAYS'}
+              </span>
+            </div>
+            <div
+              className="telemetry-data-block"
+              title={`Longest consecutive contribution streak in the 53-week timeline: ${maxStreak} days`}
+            >
+              <span className="tdb-key">MAX_STREAK:</span>
+              <span className="tdb-val">
+                {maxStreak} {maxStreak === 1 ? 'DAY' : 'DAYS'}
+              </span>
+            </div>
             <div className="telemetry-data-block">
               <span className="tdb-key">COMMITS:</span>
               <span className="tdb-val">{totalCommits}</span>
@@ -288,6 +372,11 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           ) : (
             <div className="hud-idle-stream">
               <span>SCANNING_MATRIX... HOVER OVER ANY CELL TO RETRIEVE EVENT PAYLOAD</span>
+              {currentStreak > 0 && (
+                <span style={{ color: 'var(--accent-radar)', marginLeft: '0.75rem' }}>
+                  /// ACTIVE_STREAK: {currentStreak} {currentStreak === 1 ? 'DAY' : 'DAYS'} (RECORD: {maxStreak})
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -339,6 +428,11 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           align-items: center;
           gap: 0.45rem;
           font-size: 0.68rem;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .telemetry-data-block-active {
+          border-color: var(--accent-radar);
+          box-shadow: 0 0 6px var(--accent-radar-dim);
         }
         .tdb-key {
           color: var(--text-dim);
