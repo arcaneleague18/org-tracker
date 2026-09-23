@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ContributorStats, ActivityEvent } from '../types';
 import { ArrowUpRightIcon } from './Icons';
 
@@ -7,23 +7,41 @@ interface ContributorDetailModalProps {
   onClose: () => void;
 }
 
+interface CalendarDay {
+  date: string; // YYYY-MM-DD
+  dayOfWeek: number; // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  month: number; // 0 to 11
+  monthName: string;
+  dayOfMonth: number;
+  commits: number;
+  prs: number;
+  reviews: number;
+  total: number;
+  isFuture: boolean;
+}
+
+interface CalendarWeek {
+  weekIndex: number;
+  days: CalendarDay[];
+}
+
+function formatDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   contributor,
   onClose
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
-  const [hoveredSlot, setHoveredSlot] = useState<{
-    day: number;
-    hour: number;
-    count: number;
-    dates: string[];
-  } | null>(null);
+  const [hoveredDay, setHoveredDay] = useState<CalendarDay | null>(null);
 
   useEffect(() => {
     setSelectedDate(null);
-    setSelectedDayIndex(null);
-    setHoveredSlot(null);
+    setHoveredDay(null);
   }, [contributor?.login]);
 
   useEffect(() => {
@@ -33,12 +51,6 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
-
-  if (!contributor) return null;
-
-  const daysOfWeek = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const maxPunch = Math.max(...contributor.punchcard.map((s) => s.count), 1);
-  const totalRepoCommits = contributor.repositories.reduce((acc, r) => acc + r.commits, 0) || 1;
 
   const getEventCanonicalDate = (event: ActivityEvent): string => {
     if (event.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(event.dateStr)) {
@@ -82,82 +94,257 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
     return canonicalDate;
   };
 
-  const getEventDayOfWeek = (event: ActivityEvent): number => {
-    if (typeof event.dayOfWeek === 'number' && event.dayOfWeek >= 0 && event.dayOfWeek <= 6) {
-      return event.dayOfWeek;
-    }
-    if (event.isoDate) {
-      const d = new Date(event.isoDate);
+  const formatTooltipDate = (canonicalDate: string): string => {
+    if (!canonicalDate) return '';
+    const parts = canonicalDate.split('-').map(Number);
+    if (parts.length === 3) {
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
       if (!isNaN(d.getTime())) {
-        return d.getDay();
+        return d.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
       }
     }
-    const cDate = getEventCanonicalDate(event);
-    if (cDate) {
-      const parts = cDate.split('-').map(Number);
-      const d = new Date(parts[0], parts[1] - 1, parts[2]);
-      if (!isNaN(d.getTime())) return d.getDay();
-    }
-    return -1;
+    return canonicalDate;
   };
 
-  const getEventHour = (event: ActivityEvent): number => {
-    if (typeof event.hour === 'number' && event.hour >= 0 && event.hour <= 23) {
-      return event.hour;
+  // Build full 53-week timeline for this contributor
+  const {
+    weeksList,
+    monthLabels,
+    totalTimelineCommits,
+    totalTimelinePrs,
+    totalTimelineReviews,
+    totalTimelineEvents,
+    maxTimelineDaily,
+    currentStreak,
+    maxStreak
+  } = useMemo(() => {
+    if (!contributor) {
+      return {
+        weeksList: [],
+        monthLabels: [],
+        totalTimelineCommits: 0,
+        totalTimelinePrs: 0,
+        totalTimelineReviews: 0,
+        totalTimelineEvents: 0,
+        maxTimelineDaily: 1,
+        currentStreak: 0,
+        maxStreak: 0
+      };
     }
-    if (event.isoDate) {
-      const d = new Date(event.isoDate);
-      if (!isNaN(d.getTime())) return d.getHours();
+
+    const dailyMap = new Map<string, { commits: number; prs: number; reviews: number; total: number }>();
+
+    // 1. Process recentActivity events
+    if (contributor.recentActivity) {
+      for (const event of contributor.recentActivity) {
+        const cDate = getEventCanonicalDate(event);
+        if (cDate) {
+          if (!dailyMap.has(cDate)) {
+            dailyMap.set(cDate, { commits: 0, prs: 0, reviews: 0, total: 0 });
+          }
+          const entry = dailyMap.get(cDate)!;
+          if (event.type === 'commit') {
+            entry.commits++;
+          } else if (event.type === 'pr_merged' || event.type === 'pr_opened') {
+            entry.prs++;
+          } else if (event.type === 'review') {
+            entry.reviews++;
+          }
+          entry.total++;
+        }
+      }
     }
-    return -1;
+
+    // 2. Incorporate activityByDate aggregate record
+    if (contributor.activityByDate) {
+      for (const [dateStr, count] of Object.entries(contributor.activityByDate)) {
+        if (!dailyMap.has(dateStr)) {
+          dailyMap.set(dateStr, { commits: count, prs: 0, reviews: 0, total: count });
+        } else {
+          const entry = dailyMap.get(dateStr)!;
+          if (count > entry.total) {
+            const diff = count - entry.total;
+            entry.commits += diff;
+            entry.total = count;
+          }
+        }
+      }
+    }
+
+    // 3. Incorporate punchcard dates if available
+    if (contributor.punchcard) {
+      for (const slot of contributor.punchcard) {
+        if (slot.dates) {
+          for (const d of slot.dates) {
+            if (!dailyMap.has(d)) {
+              dailyMap.set(d, { commits: 1, prs: 0, reviews: 0, total: 1 });
+            }
+          }
+        }
+      }
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = formatDate(today);
+
+    const currentDayOfWeek = today.getDay();
+    const currentSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - currentDayOfWeek);
+
+    const totalWeeks = 53;
+    const startSunday = new Date(currentSunday.getFullYear(), currentSunday.getMonth(), currentSunday.getDate() - (totalWeeks - 1) * 7);
+
+    let commitsCount = 0;
+    let prsCount = 0;
+    let reviewsCount = 0;
+    let totalEventsCount = 0;
+    let maxDaily = 0;
+
+    const weeks: CalendarWeek[] = [];
+
+    for (let w = 0; w < totalWeeks; w++) {
+      const days: CalendarDay[] = [];
+      for (let d = 0; d < 7; d++) {
+        const cellDate = new Date(startSunday.getFullYear(), startSunday.getMonth(), startSunday.getDate() + w * 7 + d);
+        const dateStr = formatDate(cellDate);
+        const isFuture = dateStr > todayStr;
+
+        const p = dailyMap.get(dateStr);
+        const commits = p?.commits || 0;
+        const prs = p?.prs || 0;
+        const reviews = p?.reviews || 0;
+        const total = p?.total || 0;
+
+        if (!isFuture) {
+          commitsCount += commits;
+          prsCount += prs;
+          reviewsCount += reviews;
+          totalEventsCount += total;
+          if (total > maxDaily) {
+            maxDaily = total;
+          }
+        }
+
+        days.push({
+          date: dateStr,
+          dayOfWeek: d,
+          month: cellDate.getMonth(),
+          monthName: cellDate.toLocaleString('en-US', { month: 'short' }),
+          dayOfMonth: cellDate.getDate(),
+          commits,
+          prs,
+          reviews,
+          total,
+          isFuture
+        });
+      }
+      weeks.push({ weekIndex: w, days });
+    }
+
+    // Identify month labels
+    const labels: { label: string; weekIndex: number }[] = [];
+    let lastMonth = -1;
+    let lastLabeledWeek = -99;
+
+    weeks.forEach((week, wIdx) => {
+      const month = week.days[0].month;
+      if (month !== lastMonth && wIdx - lastLabeledWeek >= 2) {
+        labels.push({
+          label: week.days[0].monthName,
+          weekIndex: wIdx
+        });
+        lastMonth = month;
+        lastLabeledWeek = wIdx;
+      }
+    });
+
+    // Calculate streaks
+    const chronologicalDays: CalendarDay[] = [];
+    for (const w of weeks) {
+      for (const d of w.days) {
+        if (!d.isFuture) {
+          chronologicalDays.push(d);
+        }
+      }
+    }
+
+    let maxStrk = 0;
+    let runningStrk = 0;
+    for (const day of chronologicalDays) {
+      if (day.total > 0) {
+        runningStrk++;
+        if (runningStrk > maxStrk) {
+          maxStrk = runningStrk;
+        }
+      } else {
+        runningStrk = 0;
+      }
+    }
+
+    let curStrk = 0;
+    const n = chronologicalDays.length;
+    if (n > 0) {
+      const todayDay = chronologicalDays[n - 1];
+      const yesterdayDay = n >= 2 ? chronologicalDays[n - 2] : null;
+
+      let startIdx = -1;
+      if (todayDay.total > 0) {
+        startIdx = n - 1;
+      } else if (yesterdayDay && yesterdayDay.total > 0) {
+        startIdx = n - 2;
+      }
+
+      if (startIdx >= 0) {
+        for (let i = startIdx; i >= 0; i--) {
+          if (chronologicalDays[i].total > 0) {
+            curStrk++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    return {
+      weeksList: weeks,
+      monthLabels: labels,
+      totalTimelineCommits: commitsCount,
+      totalTimelinePrs: prsCount,
+      totalTimelineReviews: reviewsCount,
+      totalTimelineEvents: totalEventsCount,
+      maxTimelineDaily: maxDaily > 0 ? maxDaily : 1,
+      currentStreak: curStrk,
+      maxStreak: maxStrk
+    };
+  }, [contributor]);
+
+  const getIntensityClass = (total: number) => {
+    if (total === 0) return 'cell-l0';
+    if (maxTimelineDaily <= 4) {
+      if (total === 1) return 'cell-l1';
+      if (total === 2) return 'cell-l2';
+      if (total === 3) return 'cell-l3';
+      return 'cell-l4';
+    }
+    const ratio = total / maxTimelineDaily;
+    if (ratio <= 0.25) return 'cell-l1';
+    if (ratio <= 0.5) return 'cell-l2';
+    if (ratio <= 0.75) return 'cell-l3';
+    return 'cell-l4';
   };
 
-  // Build a lookup map of `${day}-${hour}` -> canonical dates
-  const slotDatesMap: Record<string, string[]> = {};
-  const tempMap: Record<string, Set<string>> = {};
-  contributor.punchcard.forEach((s) => {
-    const key = `${s.day}-${s.hour}`;
-    if (!tempMap[key]) tempMap[key] = new Set();
-    if (s.dates) {
-      s.dates.forEach((d) => tempMap[key].add(d));
-    }
-  });
+  if (!contributor) return null;
 
-  contributor.recentActivity.forEach((event) => {
-    const cDate = getEventCanonicalDate(event);
-    const day = getEventDayOfWeek(event);
-    const hour = getEventHour(event);
-    if (cDate && day >= 0 && hour >= 0) {
-      const key = `${day}-${hour}`;
-      if (!tempMap[key]) tempMap[key] = new Set();
-      tempMap[key].add(cDate);
-    }
-  });
-
-  for (const [key, set] of Object.entries(tempMap)) {
-    slotDatesMap[key] = Array.from(set).sort().reverse();
-  }
-
-  const getSlotDates = (day: number, hour: number): string[] => {
-    return slotDatesMap[`${day}-${hour}`] || [];
-  };
-
-  const getDayActiveDates = (dayIndex: number): string[] => {
-    const datesSet = new Set<string>();
-    for (let hour = 0; hour < 24; hour++) {
-      const dates = getSlotDates(dayIndex, hour);
-      dates.forEach((d) => datesSet.add(d));
-    }
-    return Array.from(datesSet).sort().reverse();
-  };
+  const totalRepoCommits = contributor.repositories.reduce((acc, r) => acc + r.commits, 0) || 1;
 
   const filteredEvents = selectedDate
     ? contributor.recentActivity.filter(
         (event) => getEventCanonicalDate(event) === selectedDate
-      )
-    : selectedDayIndex !== null
-    ? contributor.recentActivity.filter(
-        (event) => getEventDayOfWeek(event) === selectedDayIndex
       )
     : contributor.recentActivity;
 
@@ -259,172 +446,174 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             </div>
           </div>
 
-          {/* 7x24 Hourly Punchcard Matrix */}
+          {/* Full Annual Contribution Timeline */}
           <div className="dossier-section">
             <div className="section-title-strip flex-between">
-              <span>// HOURLY_PUNCHCARD_RADAR [00:00 TO 23:00 UTC]</span>
-              {selectedDate ? (
-                <span className="punchcard-filter-indicator">
-                  [ACTIVE_DATE: {formatDisplayDate(selectedDate)} ({daysOfWeek[selectedDayIndex ?? 0]})]
-                </span>
-              ) : selectedDayIndex !== null ? (
-                <span className="punchcard-filter-indicator">
-                  [ACTIVE_DAY: {daysOfWeek[selectedDayIndex]}]
-                </span>
-              ) : null}
-            </div>
-            <div className="punchcard-console">
-              {daysOfWeek.map((dayName, dayIndex) => {
-                const daySlots = contributor.punchcard.filter((s) => s.day === dayIndex);
-                const dayDates = getDayActiveDates(dayIndex);
-                const isSelected = selectedDayIndex === dayIndex;
-                const isAnySelected = selectedDayIndex !== null || selectedDate !== null;
-                const totalDayActions = daySlots.reduce((acc, s) => acc + s.count, 0);
+              <div className="timeline-title-left">
+                <span>// FULL_ANNUAL_CONTRIBUTION_TIMELINE [53_WEEK_CADENCE // GITHUB_STANDARD]</span>
+                {selectedDate && (
+                  <span className="timeline-filter-indicator font-mono">
+                    [FILTER: {formatDisplayDate(selectedDate)}]
+                  </span>
+                )}
+              </div>
 
-                return (
-                  <div
-                    key={dayName}
-                    className={`punch-console-row ${isSelected ? 'row-selected' : ''} ${isAnySelected && !isSelected ? 'row-dimmed' : ''}`}
-                    onClick={() => {
-                      if (dayDates.length === 0) {
-                        setSelectedDayIndex(isSelected ? null : dayIndex);
-                        setSelectedDate(null);
-                        return;
-                      }
-                      if (selectedDayIndex === dayIndex) {
-                        if (selectedDate) {
-                          const idx = dayDates.indexOf(selectedDate);
-                          if (idx >= 0 && idx < dayDates.length - 1) {
-                            setSelectedDate(dayDates[idx + 1]);
-                          } else {
-                            setSelectedDate(null);
-                            setSelectedDayIndex(null);
-                          }
-                        } else {
-                          setSelectedDate(dayDates[0]);
-                        }
-                      } else {
-                        setSelectedDayIndex(dayIndex);
-                        setSelectedDate(dayDates[0]);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    title={`CLICK TO ${isSelected ? 'CLEAR FILTER' : `FILTER BY ${dayName}`} [${totalDayActions} ACTIONS // ${dayDates.length} ACTIVE DATE${dayDates.length === 1 ? '' : 'S'}]`}
+              {/* Contributor Telemetry Stat Pills */}
+              <div className="dossier-timeline-pills font-mono">
+                <div
+                  className={`telemetry-data-block ${currentStreak > 0 ? 'telemetry-data-block-active' : ''}`}
+                  title={`Current active contribution streak: ${currentStreak} days | Longest: ${maxStreak} days`}
+                >
+                  <span className="tdb-key">CURRENT_STREAK:</span>
+                  <span
+                    className="tdb-val"
+                    style={{ color: currentStreak > 0 ? 'var(--accent-radar)' : undefined }}
                   >
-                    <span className={`punch-day-code ${isSelected ? 'day-code-selected' : ''}`}>
-                      {dayName}
-                    </span>
-                    <div className="punch-grid-track">
-                      {daySlots.map((slot) => {
-                        const slotDates = getSlotDates(dayIndex, slot.hour);
-                        const dateDisplayList = slotDates.map(formatDisplayDate);
-                        const hasSelectedDate = selectedDate ? slotDates.includes(selectedDate) : false;
+                    {currentStreak} {currentStreak === 1 ? 'DAY' : 'DAYS'}
+                  </span>
+                </div>
+                <div
+                  className="telemetry-data-block"
+                  title={`Longest consecutive contribution streak in the 53-week timeline: ${maxStreak} days`}
+                >
+                  <span className="tdb-key">MAX_STREAK:</span>
+                  <span className="tdb-val">
+                    {maxStreak} {maxStreak === 1 ? 'DAY' : 'DAYS'}
+                  </span>
+                </div>
+                <div className="telemetry-data-block">
+                  <span className="tdb-key">COMMITS:</span>
+                  <span className="tdb-val">{totalTimelineCommits}</span>
+                </div>
+                <div className="telemetry-data-block">
+                  <span className="tdb-key">PRS:</span>
+                  <span className="tdb-val">{totalTimelinePrs}</span>
+                </div>
+                <div className="telemetry-data-block">
+                  <span className="tdb-key">REVIEWS:</span>
+                  <span className="tdb-val">{totalTimelineReviews}</span>
+                </div>
+                <div className="telemetry-data-block">
+                  <span className="tdb-key">TOTAL_BURST:</span>
+                  <span className="tdb-val">{totalTimelineEvents}</span>
+                </div>
+              </div>
+            </div>
 
-                        const getPunchIntensityClass = (count: number) => {
-                          if (count === 0) return 'cell-l0';
-                          const ratio = count / maxPunch;
-                          if (ratio < 0.25) return 'cell-l1';
-                          if (ratio < 0.5) return 'cell-l2';
-                          if (ratio < 0.75) return 'cell-l3';
-                          return 'cell-l4';
-                        };
-
-                        let tooltipText = `${dayName} @ ${slot.hour.toString().padStart(2, '0')}:00 UTC // ${slot.count} ACTION${slot.count === 1 ? '' : 'S'}`;
-                        if (slotDates.length > 0) {
-                          tooltipText += ` ON ${dateDisplayList.join(', ')}`;
-                        } else if (slot.count === 0) {
-                          tooltipText += ` (NO RECORDED ACTIONS)`;
-                        }
-
-                        return (
-                          <div
-                            key={slot.hour}
-                            className={`punch-square ${getPunchIntensityClass(slot.count)} ${
-                              hasSelectedDate ? 'cell-date-selected' : ''
-                            } ${selectedDate && !hasSelectedDate ? 'cell-date-other' : ''}`}
-                            title={tooltipText}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (slotDates.length > 0) {
-                                if (selectedDate === slotDates[0]) {
-                                  if (slotDates.length > 1) {
-                                    setSelectedDate(slotDates[1]);
-                                  } else {
-                                    setSelectedDate(null);
-                                    setSelectedDayIndex(null);
-                                  }
-                                } else {
-                                  setSelectedDate(slotDates[0]);
-                                  setSelectedDayIndex(dayIndex);
-                                }
-                              } else {
-                                setSelectedDayIndex(isSelected ? null : dayIndex);
-                                setSelectedDate(null);
-                              }
-                            }}
-                            onMouseEnter={() => {
-                              setHoveredSlot({
-                                day: dayIndex,
-                                hour: slot.hour,
-                                count: slot.count,
-                                dates: slotDates
-                              });
-                            }}
-                            onMouseLeave={() => setHoveredSlot(null)}
-                          />
-                        );
-                      })}
+            <div className="dossier-timeline-console">
+              {/* Scrollable 53-week Canvas */}
+              <div className="dossier-timeline-scroll">
+                <div className="dossier-timeline-inner">
+                  {/* Months Header Track */}
+                  <div className="months-header-row">
+                    <div className="weekday-spacer" />
+                    <div className="months-track">
+                      {monthLabels.map((m, idx) => (
+                        <span
+                          key={idx}
+                          className="month-label font-mono"
+                          style={{ left: `${m.weekIndex * 14}px` }}
+                        >
+                          {m.label}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
 
-              {/* Real-time Telemetry HUD readout on hover */}
-              <div className="punch-telemetry-hud font-mono">
-                {hoveredSlot ? (
+                  {/* Main Matrix: Weekday Labels + 53 Columns */}
+                  <div className="matrix-body-row">
+                    <div className="weekday-labels-col font-mono">
+                      <span className="weekday-label"></span>
+                      <span className="weekday-label">Mon</span>
+                      <span className="weekday-label"></span>
+                      <span className="weekday-label">Wed</span>
+                      <span className="weekday-label"></span>
+                      <span className="weekday-label">Fri</span>
+                      <span className="weekday-label"></span>
+                    </div>
+
+                    <div className="weeks-container">
+                      {weeksList.map((week) => (
+                        <div key={week.weekIndex} className="week-column">
+                          {week.days.map((day) => {
+                            const isCellSelected = selectedDate === day.date;
+                            return (
+                              <div
+                                key={day.date}
+                                className={`matrix-cell ${day.isFuture ? 'cell-future' : getIntensityClass(day.total)} ${
+                                  isCellSelected ? 'cell-date-selected' : ''
+                                } ${hoveredDay?.date === day.date ? 'cell-active' : ''}`}
+                                title={
+                                  day.isFuture
+                                    ? ''
+                                    : `${day.total} contribution${day.total === 1 ? '' : 's'} on ${formatTooltipDate(day.date)}${
+                                        day.total > 0
+                                          ? ` (${day.commits} commits, ${day.prs} PRs, ${day.reviews} reviews)`
+                                          : ''
+                                      } // CLICK TO FILTER AUDIT LOG`
+                                }
+                                onClick={() => {
+                                  if (day.isFuture) return;
+                                  setSelectedDate(selectedDate === day.date ? null : day.date);
+                                }}
+                                onMouseEnter={() => !day.isFuture && setHoveredDay(day)}
+                                onMouseLeave={() => setHoveredDay(null)}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Real-time Telemetry HUD readout on hover / idle / filter */}
+              <div className="timeline-telemetry-hud font-mono">
+                {hoveredDay ? (
                   <div className="hud-content">
-                    <span className="hud-coord">COORD: [{daysOfWeek[hoveredSlot.day]} @ {hoveredSlot.hour.toString().padStart(2, '0')}:00 UTC]</span>
+                    <span className="hud-coord">COORD_DATE: [{formatDisplayDate(hoveredDay.date)}]</span>
                     <span className="hud-sep">///</span>
-                    <span className="hud-accent">{hoveredSlot.count} ACTION{hoveredSlot.count === 1 ? '' : 'S'}</span>
-                    {hoveredSlot.dates.length > 0 ? (
-                      <>
-                        <span className="hud-sep">///</span>
-                        <span className="hud-date-pill">DATE: {hoveredSlot.dates.map(formatDisplayDate).join(', ')}</span>
-                      </>
-                    ) : (
-                      <span className="hud-dim"> /// NO ACTIVITY</span>
-                    )}
+                    <span className="hud-event">COMMITS: {hoveredDay.commits}</span>
+                    <span className="hud-sep">/</span>
+                    <span className="hud-event">PRS: {hoveredDay.prs}</span>
+                    <span className="hud-sep">/</span>
+                    <span className="hud-event">REVIEWS: {hoveredDay.reviews}</span>
+                    <span className="hud-sep">///</span>
+                    <span className="hud-total">TOTAL_BURST: {hoveredDay.total} EVENT{hoveredDay.total === 1 ? '' : 'S'}</span>
+                    {hoveredDay.total > 0 && <span className="hud-hint">/// CLICK CELL TO FILTER LOG</span>}
                   </div>
                 ) : selectedDate ? (
                   <div className="hud-content">
                     <span className="hud-label">FILTERED_DATE:</span>
-                    <span className="hud-date-pill">[{formatDisplayDate(selectedDate)} ({daysOfWeek[selectedDayIndex ?? 0]})]</span>
+                    <span className="hud-date-pill">[{formatDisplayDate(selectedDate)}]</span>
                     <span className="hud-sep">///</span>
-                    <span className="hud-hint">CLICK ANY CELL TO SWITCH DATE // CLICK [ALL] TO RESET</span>
+                    <span className="hud-hint">CLICK CELL AGAIN OR [ALL] TO RESET FILTER</span>
                   </div>
                 ) : (
                   <div className="hud-content hud-idle">
-                    <span>// HOVER OVER ANY CELL TO VIEW EXACT DATE & TIME // CLICK TO FILTER BY DATE</span>
+                    <span>// HOVER OVER ANY CELL TO RETRIEVE TELEMETRY PAYLOAD // CLICK CELL TO FILTER AUDIT LOG</span>
+                    {currentStreak > 0 && (
+                      <span style={{ color: 'var(--accent-radar)', marginLeft: '0.75rem' }}>
+                        /// ACTIVE_STREAK: {currentStreak} {currentStreak === 1 ? 'DAY' : 'DAYS'} (RECORD: {maxStreak})
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="punch-calibration-row">
-                <div className="punch-footer-axis">
-                  <span>00H</span>
-                  <span>06H</span>
-                  <span>12H</span>
-                  <span>18H</span>
-                  <span>23H</span>
-                </div>
+              {/* Calibration Footer: Standard / Legend */}
+              <div className="timeline-footer-row">
+                <span className="matrix-footer-note font-mono">
+                  [ CADENCE: 365_DAY_TEMPORAL_MATRIX // GITHUB_STANDARD ]
+                </span>
                 <div className="matrix-calibration font-mono">
                   <span className="scale-label">Less</span>
-                  <span className="scale-cell cell-l0"></span>
-                  <span className="scale-cell cell-l1"></span>
-                  <span className="scale-cell cell-l2"></span>
-                  <span className="scale-cell cell-l3"></span>
-                  <span className="scale-cell cell-l4"></span>
+                  <span className="scale-cell cell-l0" title="0 contributions"></span>
+                  <span className="scale-cell cell-l1" title="Low activity"></span>
+                  <span className="scale-cell cell-l2" title="Medium-low activity"></span>
+                  <span className="scale-cell cell-l3" title="Medium-high activity"></span>
+                  <span className="scale-cell cell-l4" title="High activity"></span>
                   <span className="scale-label">More</span>
                 </div>
               </div>
@@ -436,41 +625,17 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             <div className="section-title-strip action-log-header-strip">
               <div className="action-log-header-left">
                 <span>// CHRONOLOGICAL_ACTION_LOG</span>
-                {selectedDate ? (
-                  <span className="action-log-filter-tag">
+                {selectedDate && (
+                  <span className="action-log-filter-tag font-mono">
                     [DATE: {formatDisplayDate(selectedDate)} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
                   </span>
-                ) : selectedDayIndex !== null ? (
-                  <span className="action-log-filter-tag">
-                    [DAY: {daysOfWeek[selectedDayIndex]} // {filteredEvents.length} EVENT{filteredEvents.length === 1 ? '' : 'S'}]
-                  </span>
-                ) : null}
-
-                {/* Quick-switch date pills if multiple dates available on the selected day */}
-                {selectedDayIndex !== null && getDayActiveDates(selectedDayIndex).length > 1 && (
-                  <div className="action-log-date-pills">
-                    {getDayActiveDates(selectedDayIndex).map((dStr) => (
-                      <button
-                        key={dStr}
-                        type="button"
-                        className={`btn-date-pill ${selectedDate === dStr ? 'is-active' : ''}`}
-                        onClick={() => setSelectedDate(dStr)}
-                        title={`FILTER STRICTLY BY ${formatDisplayDate(dStr)}`}
-                      >
-                        {formatDisplayDate(dStr)}
-                      </button>
-                    ))}
-                  </div>
                 )}
               </div>
               <div className="action-log-header-right">
                 <button
                   type="button"
-                  className={`btn-tactical btn-action-all ${selectedDate === null && selectedDayIndex === null ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedDate(null);
-                    setSelectedDayIndex(null);
-                  }}
+                  className={`btn-tactical btn-action-all ${selectedDate === null ? 'active' : ''}`}
+                  onClick={() => setSelectedDate(null)}
                   title="VIEW ALL CONTRIBUTIONS"
                 >
                   [ALL]
@@ -482,8 +647,6 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                 <p className="no-events-prompt">
                   {selectedDate
                     ? `[ ZERO RECORDED ACTIONS ON ${formatDisplayDate(selectedDate)} ]`
-                    : selectedDayIndex !== null
-                    ? `[ ZERO RECORDED ACTIONS ON ${daysOfWeek[selectedDayIndex]} ]`
                     : '[ NO RECORDED ACTIONS IN CURRENT WINDOW ]'}
                 </p>
               ) : (
@@ -661,84 +824,171 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           background: var(--text-phosphor);
         }
 
-        .punchcard-console {
+        .dossier-timeline-pills {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        .telemetry-data-block {
+          background: var(--bg-crt);
+          border: 1px solid var(--border-bright);
+          padding: 0.25rem 0.55rem;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          font-size: 0.65rem;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          box-sizing: border-box;
+          max-width: 100%;
+        }
+        .telemetry-data-block-active {
+          border-color: var(--accent-radar);
+          box-shadow: 0 0 6px var(--accent-radar-dim);
+        }
+        .tdb-key {
+          color: var(--text-dim);
+        }
+        .tdb-val {
+          color: var(--text-phosphor);
+          font-weight: 700;
+        }
+        .timeline-filter-indicator {
+          color: var(--accent-radar);
+          font-size: 0.62rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          margin-left: 0.5rem;
+        }
+        .dossier-timeline-console {
           background: var(--bg-crt);
           border: 1px solid var(--border-tactical);
           padding: 1rem;
           display: flex;
           flex-direction: column;
-          gap: 0.35rem;
+          gap: 0.75rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          box-sizing: border-box;
         }
-        .punch-console-row {
+        .dossier-timeline-scroll {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 0.4rem;
+          scrollbar-width: thin;
+          scrollbar-color: var(--border-bright) transparent;
+        }
+        .dossier-timeline-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+        .dossier-timeline-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .dossier-timeline-scroll::-webkit-scrollbar-thumb {
+          background: var(--border-bright);
+        }
+        .dossier-timeline-inner {
+          display: inline-flex;
+          flex-direction: column;
+          min-width: 775px;
+        }
+        .months-header-row {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          padding: 2px 4px;
-          cursor: pointer;
-          transition: background 0.15s ease, opacity 0.15s ease, border-left 0.15s ease;
-          border-left: 2px solid transparent;
+          height: 18px;
+          margin-bottom: 4px;
+        }
+        .weekday-spacer {
+          width: 28px;
+          flex-shrink: 0;
+        }
+        .months-track {
+          position: relative;
+          height: 18px;
+          flex-grow: 1;
+        }
+        .month-label {
+          position: absolute;
+          font-size: 10px;
+          color: var(--text-dim);
+          user-select: none;
+          top: 0;
+          white-space: nowrap;
+        }
+        .matrix-body-row {
+          display: flex;
+          align-items: flex-start;
+        }
+        .weekday-labels-col {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          width: 28px;
+          flex-shrink: 0;
           user-select: none;
         }
-        .punch-console-row:hover {
-          background: rgba(255, 255, 255, 0.04);
-          border-left-color: var(--border-bright);
+        .weekday-label {
+          height: 11px;
+          line-height: 11px;
+          font-size: 9px;
+          color: var(--text-ghost);
+          text-align: left;
+          padding-right: 4px;
         }
-        .punch-console-row.row-selected {
-          background: var(--accent-radar-dim);
-          border-left-color: var(--accent-radar);
-        }
-        .punch-console-row.row-dimmed {
-          opacity: 0.38;
-        }
-        .punch-console-row.row-dimmed:hover {
-          opacity: 0.85;
-        }
-        .punch-day-code {
-          width: 32px;
-          font-size: 0.65rem;
-          color: var(--text-dim);
-          font-weight: 700;
-          transition: color 0.15s ease;
-        }
-        .punch-day-code.day-code-selected {
-          color: var(--accent-radar);
-          font-weight: 900;
-          text-shadow: 0 0 6px var(--accent-radar);
-        }
-        .punch-grid-track {
+        .weeks-container {
           display: flex;
-          gap: 2px;
-          flex: 1;
+          gap: 3px;
+          flex-grow: 1;
         }
-        .punch-square {
-          flex: 1;
-          height: 14px;
+        .week-column {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+        .matrix-cell {
+          width: 11px;
+          height: 11px;
+          border-radius: 2px !important;
           cursor: pointer;
+          transition: transform 0.05s ease;
+          box-sizing: border-box;
         }
-        .punch-square:hover {
-          outline: 2px solid var(--text-phosphor);
-          z-index: 5;
+        .matrix-cell:hover,
+        .cell-active {
+          outline: 1.5px solid #ffffff;
+          z-index: 10;
+          transform: scale(1.15);
         }
-        .punch-square.cell-date-selected {
-          outline: 2px solid var(--text-phosphor);
-          box-shadow: 0 0 6px var(--accent-radar);
-          z-index: 6;
+        .cell-date-selected {
+          outline: 2px solid var(--accent-radar) !important;
+          box-shadow: 0 0 8px var(--accent-radar) !important;
+          z-index: 11;
+          transform: scale(1.18);
         }
-        .punch-square.cell-date-other {
-          opacity: 0.25;
+        .cell-future {
+          visibility: hidden;
+          pointer-events: none;
         }
-
-        .punch-telemetry-hud {
+        .timeline-telemetry-hud {
           background: rgba(0, 0, 0, 0.45);
           border: 1px solid var(--border-tactical);
           padding: 0.45rem 0.75rem;
-          margin-top: 0.6rem;
           font-size: 0.65rem;
-          min-height: 2rem;
+          min-height: 2.2rem;
           display: flex;
           align-items: center;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          box-sizing: border-box;
         }
-        body.theme-light .punch-telemetry-hud {
+        body.theme-light .timeline-telemetry-hud {
           background: rgba(0, 0, 0, 0.04);
         }
         .hud-content {
@@ -746,50 +996,60 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           align-items: center;
           gap: 0.5rem;
           flex-wrap: wrap;
+          max-width: 100%;
         }
         .hud-coord {
-          color: var(--text-phosphor);
+          color: var(--accent-hazard);
           font-weight: 700;
         }
         .hud-sep {
           color: var(--border-bright);
         }
-        .hud-accent {
+        .hud-event {
+          color: var(--text-phosphor);
+        }
+        .hud-total {
           color: var(--accent-radar);
           font-weight: 700;
+        }
+        .hud-hint {
+          color: var(--text-dim);
+          font-size: 0.62rem;
+        }
+        .hud-label {
+          color: var(--text-ghost);
+          font-weight: 600;
         }
         .hud-date-pill {
           color: var(--text-phosphor);
           font-weight: 700;
           background: var(--accent-radar-dim);
           border: 1px solid var(--accent-radar);
-          padding: 1px 5px;
-        }
-        .hud-dim {
-          color: var(--text-ghost);
-        }
-        .hud-hint {
-          color: var(--text-dim);
+          padding: 1px 6px;
         }
         .hud-idle {
-          color: var(--text-ghost);
-          font-size: 0.62rem;
+          color: var(--text-dim);
+          letter-spacing: 0.04em;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
-
-        .punch-calibration-row {
+        .timeline-footer-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding-left: 36px;
-          margin-top: 0.6rem;
           flex-wrap: wrap;
-          gap: 0.5rem;
+          gap: 0.75rem;
+          margin-top: 0.25rem;
+          font-size: 0.65rem;
+          color: var(--text-dim);
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
         }
-        .punch-footer-axis {
-          display: flex;
-          gap: 2.5rem;
-          font-size: 0.6rem;
+        .matrix-footer-note {
           color: var(--text-ghost);
+          letter-spacing: 0.04em;
+          font-size: 0.62rem;
         }
         .matrix-calibration {
           display: flex;
@@ -797,15 +1057,16 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           gap: 0.35rem;
           font-size: 0.65rem;
           color: var(--text-dim);
+          flex-shrink: 0;
         }
         .scale-cell {
-          width: 10px;
-          height: 10px;
+          width: 11px;
+          height: 11px;
+          border-radius: 2px !important;
           display: inline-block;
         }
         .scale-label {
-          padding: 0 0.2rem;
-          font-size: 0.65rem;
+          padding: 0 0.25rem;
         }
 
         .action-log-header-strip {
@@ -828,33 +1089,6 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           background: var(--accent-radar-dim);
           border: 1px solid var(--accent-radar);
           padding: 1px 6px;
-        }
-        .action-log-date-pills {
-          display: flex;
-          align-items: center;
-          gap: 0.35rem;
-          flex-wrap: wrap;
-        }
-        .btn-date-pill {
-          font-size: 0.6rem;
-          font-weight: 700;
-          font-family: var(--font-mono);
-          padding: 1px 6px;
-          background: transparent;
-          color: var(--text-dim);
-          border: 1px solid var(--border-tactical);
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .btn-date-pill:hover {
-          color: var(--text-phosphor);
-          border-color: var(--border-bright);
-        }
-        .btn-date-pill.is-active {
-          background: var(--text-phosphor);
-          color: var(--bg-crt);
-          border-color: var(--text-phosphor);
-          font-weight: 900;
         }
         .action-log-header-right {
           display: flex;
@@ -927,8 +1161,28 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
         }
 
         @media (max-width: 768px) {
+          .modal-inner-padding {
+            padding: 1rem 0.75rem;
+            gap: 1rem;
+          }
           .dossier-metrics-grid {
             grid-template-columns: repeat(2, 1fr);
+          }
+          .dossier-timeline-console {
+            padding: 0.75rem 0.5rem;
+          }
+          .dossier-timeline-pills {
+            gap: 0.3rem;
+            width: 100%;
+          }
+          .timeline-footer-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.4rem;
+          }
+          .timeline-telemetry-hud {
+            padding: 0.35rem 0.5rem;
+            font-size: 0.62rem;
           }
         }
       `}</style>
