@@ -710,10 +710,12 @@ export const App: React.FC = () => {
           justify-content: space-between;
           flex-wrap: wrap;
           gap: 1.5rem;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .unconfigured-left {
           flex: 1;
-          min-width: 260px;
+          min-width: 0;
         }
         .unconfigured-tag {
           color: var(--accent-hazard);
@@ -744,6 +746,8 @@ export const App: React.FC = () => {
           flex-wrap: wrap;
           gap: 1rem;
           font-size: 0.72rem;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .error-prefix {
           color: var(--accent-hazard);
@@ -752,15 +756,21 @@ export const App: React.FC = () => {
         .error-body {
           color: var(--text-phosphor);
           flex: 1;
+          min-width: 0;
+          word-break: break-word;
         }
         .error-ctrls {
           display: flex;
           gap: 0.5rem;
+          flex-wrap: wrap;
         }
         .tactical-footer {
           border-top: 1px solid var(--border-tactical);
           background: var(--bg-panel);
           margin-top: auto;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .footer-content-row {
           padding: 1.5rem 0;
@@ -787,6 +797,7 @@ export const App: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 0.65rem;
+          flex-wrap: wrap;
         }
         .footer-link-tactical {
           background: transparent;
@@ -805,6 +816,23 @@ export const App: React.FC = () => {
         .footer-status-tag {
           color: var(--accent-radar);
           font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+          .tactical-unconfigured-banner {
+            padding: 0.85rem 1rem;
+            gap: 1rem;
+          }
+          .tactical-error-banner {
+            padding: 0.75rem 1rem;
+            gap: 0.75rem;
+          }
+          .footer-content-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 1rem 0;
+          }
         }
       `}</style>
     </div>

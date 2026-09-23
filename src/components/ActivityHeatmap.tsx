@@ -385,11 +385,18 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
       <style>{`
         .radar-section {
           margin-bottom: 2.5rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
         }
         .tactical-panel {
           background: var(--bg-panel);
           border: 1px solid var(--border-tactical);
           padding: 1.5rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
         .panel-header-row {
           display: flex;
@@ -400,25 +407,35 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           border-bottom: 1px solid var(--border-tactical);
           padding-bottom: 1.25rem;
           margin-bottom: 1.25rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
         }
         .panel-meta-title {
           display: flex;
           flex-direction: column;
           gap: 0.35rem;
+          min-width: 0;
+          max-width: 100%;
         }
         .radar-title {
           font-size: 1.3rem;
           color: var(--text-phosphor);
+          word-break: break-word;
         }
         .radar-subtext {
           font-size: 0.68rem;
           color: var(--text-dim);
+          word-break: break-word;
         }
         .telemetry-stat-pills {
           display: flex;
           align-items: center;
           gap: 0.75rem;
           flex-wrap: wrap;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
         }
         .telemetry-data-block {
           background: var(--bg-crt);
@@ -429,6 +446,8 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           gap: 0.45rem;
           font-size: 0.68rem;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          box-sizing: border-box;
+          max-width: 100%;
         }
         .telemetry-data-block-active {
           border-color: var(--accent-radar);
@@ -448,9 +467,18 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           display: flex;
           flex-direction: column;
           gap: 1rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          box-sizing: border-box;
         }
         .contribution-graph-scroll {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
           overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
           padding-bottom: 0.5rem;
           scrollbar-width: thin;
           scrollbar-color: var(--border-bright) transparent;
@@ -549,15 +577,20 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           margin-top: 0.25rem;
           font-size: 0.68rem;
           color: var(--text-dim);
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
         }
         .matrix-footer-note {
           color: var(--text-ghost);
           letter-spacing: 0.04em;
+          word-break: break-word;
         }
         .matrix-calibration {
           display: flex;
           align-items: center;
           gap: 0.35rem;
+          flex-shrink: 0;
         }
         .scale-cell {
           width: 11px;
@@ -577,12 +610,18 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
           display: flex;
           align-items: center;
           font-size: 0.72rem;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          box-sizing: border-box;
         }
         .hud-active-stream {
           display: flex;
           align-items: center;
           gap: 0.6rem;
           flex-wrap: wrap;
+          max-width: 100%;
         }
         .hud-coord {
           color: var(--accent-hazard);
@@ -601,6 +640,51 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
         .hud-idle-stream {
           color: var(--text-dim);
           letter-spacing: 0.05em;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          max-width: 100%;
+        }
+
+        @media (max-width: 768px) {
+          .radar-section {
+            margin-bottom: 1.5rem;
+          }
+          .tactical-panel {
+            padding: 0.75rem;
+          }
+          .panel-header-row {
+            gap: 0.6rem;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+          }
+          .radar-title {
+            font-size: 1.1rem;
+          }
+          .radar-subtext {
+            font-size: 0.6rem;
+          }
+          .telemetry-stat-pills {
+            gap: 0.35rem;
+          }
+          .telemetry-data-block {
+            font-size: 0.62rem;
+            padding: 0.25rem 0.45rem;
+            gap: 0.3rem;
+          }
+          .matrix-canvas {
+            padding: 0.75rem 0.5rem;
+            gap: 0.75rem;
+          }
+          .matrix-footer {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+          }
+          .telemetry-readout-hud {
+            padding: 0.45rem 0.6rem;
+            font-size: 0.65rem;
+            min-height: 2rem;
+          }
         }
       `}</style>
     </section>

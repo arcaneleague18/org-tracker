@@ -53,11 +53,20 @@ body.theme-light {
   border-radius: 0 !important;
 }
 
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
 body {
   font-family: var(--font-mono);
   background-color: var(--bg-crt);
   color: var(--text-phosphor);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -115,6 +124,9 @@ body.theme-light::after {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -172,6 +184,15 @@ body.theme-light::after {
   color: var(--border-bright);
   z-index: 2;
   pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .with-crosshairs::before {
+    left: 0;
+  }
+  .with-crosshairs::after {
+    right: 0;
+  }
 }
 
 /* ASCII Eyebrow & Badges */
@@ -368,10 +389,15 @@ body.theme-light .cell-l4 {
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 1.5rem;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
   .container {
     padding: 0 0.75rem;
+    max-width: 100%;
+  }
+  .modal-overlay {
+    padding: 0.5rem;
   }
 }

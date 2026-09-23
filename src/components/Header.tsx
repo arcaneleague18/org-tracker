@@ -209,6 +209,17 @@ export const Header: React.FC<HeaderProps> = ({
           justify-content: space-between;
           flex-wrap: wrap;
           gap: 1.5rem;
+          min-width: 0;
+          max-width: 100%;
+          box-sizing: border-box;
+        }
+        .telemetry-controls {
+          display: flex;
+          align-items: center;
+          gap: 1.25rem;
+          flex-wrap: wrap;
+          min-width: 0;
+          max-width: 100%;
         }
         .telemetry-identity {
           display: flex;
@@ -380,7 +391,7 @@ export const Header: React.FC<HeaderProps> = ({
             justify-content: space-between;
           }
         }
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .header-tactical {
             position: relative;
             top: auto;
@@ -388,6 +399,8 @@ export const Header: React.FC<HeaderProps> = ({
           .header-body {
             gap: 0.45rem;
             padding: 0.5rem 0 0.45rem 0;
+            width: 100%;
+            max-width: 100%;
           }
           .telemetry-identity {
             width: 100%;
@@ -406,6 +419,7 @@ export const Header: React.FC<HeaderProps> = ({
           .org-heading-group {
             flex: 1;
             gap: 0;
+            min-width: 0;
           }
           .title-row {
             gap: 0.4rem;
@@ -432,6 +446,8 @@ export const Header: React.FC<HeaderProps> = ({
             align-items: stretch;
             gap: 0.4rem;
             width: 100%;
+            max-width: 100%;
+            min-width: 0;
           }
           .time-filter-track {
             width: 100%;
@@ -444,6 +460,8 @@ export const Header: React.FC<HeaderProps> = ({
           }
           .tactical-actions-grid {
             width: 100%;
+            max-width: 100%;
+            min-width: 0;
             display: flex;
             align-items: center;
             gap: 0.3rem;

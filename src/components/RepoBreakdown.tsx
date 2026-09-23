@@ -274,6 +274,22 @@ export const RepoBreakdown: React.FC<RepoBreakdownProps> = ({ repositories }) =>
           border: 1px solid var(--border-tactical);
           padding: 0.15rem 0.45rem;
         }
+
+        @media (max-width: 768px) {
+          .repos-tactical {
+            margin-bottom: 2rem;
+          }
+          .repos-matrix-grid {
+            grid-template-columns: 1fr;
+          }
+          .repo-telemetry-payload {
+            flex-wrap: wrap;
+            gap: 0.75rem;
+          }
+          .repos-controls-row {
+            gap: 0.75rem;
+          }
+        }
       `}</style>
     </section>
   );

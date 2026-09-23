@@ -422,6 +422,11 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
           background: var(--bg-panel);
           border: 1px solid var(--border-tactical);
           overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
         .dossier-table {
           width: 100%;
@@ -734,15 +739,34 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
         }
 
         @media (max-width: 768px) {
+          .tactical-modules-grid {
+            grid-template-columns: 1fr;
+          }
+          .tactical-table-wrapper {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+          }
           .leaderboard-controls-bar {
             flex-direction: column;
             align-items: flex-start;
+            gap: 0.75rem;
           }
           .controls-right {
             width: 100%;
+            flex-direction: column;
+            gap: 0.5rem;
           }
           .tactical-search {
             width: 100%;
+          }
+          .tactical-view-toggle {
+            width: 100%;
+            display: flex;
+          }
+          .view-btn {
+            flex: 1;
+            text-align: center;
           }
         }
       `}</style>
