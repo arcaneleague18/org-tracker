@@ -462,12 +462,12 @@ export const App: React.FC = () => {
     }
   }, [credentials, dateRange, syncStatus.lastSyncedAt]);
 
-  // Auto-sync on load if no cached data exists
+  // Auto-sync on load only if security captcha is verified and no data is loaded
   useEffect(() => {
-    if (!syncStatus.isSyncing && rawContributors.length === 0) {
+    if (isCaptchaVerified && !syncStatus.isSyncing && rawContributors.length === 0) {
       handleTriggerSync();
     }
-  }, [credentials.token]);
+  }, [isCaptchaVerified, syncStatus.isSyncing, rawContributors.length, handleTriggerSync]);
 
   const handleToggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';

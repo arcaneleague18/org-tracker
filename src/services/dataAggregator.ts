@@ -51,6 +51,27 @@ interface ContributorRecord {
   activityByDate: Record<string, number>;
 }
 
+/**
+ * Safely parses an untrusted raw date string or timestamp.
+ * If raw is missing, malformed, or yields an Invalid Date (NaN timestamp),
+ * it returns fallbackDate (defaults to current Date).
+ */
+export function parseSafeDate(raw: unknown, fallbackDate: Date = new Date()): Date {
+  if (!raw) return fallbackDate;
+  if (raw instanceof Date) {
+    return isNaN(raw.getTime()) ? fallbackDate : raw;
+  }
+  if (typeof raw === 'number') {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? fallbackDate : d;
+  }
+  if (typeof raw !== 'string') return fallbackDate;
+  const trimmed = raw.trim();
+  if (!trimmed) return fallbackDate;
+  const parsed = new Date(trimmed);
+  return isNaN(parsed.getTime()) ? fallbackDate : parsed;
+}
+
 export function aggregateOrgData(data: RawSyncData, orgName: string): {
   contributors: ContributorStats[];
   repositories: RepositorySummary[];
@@ -123,7 +144,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
   // 1. Process Commits
   for (const [repoName, commits] of Object.entries(data.commitsByRepo)) {
     for (const c of commits) {
-      const authorLogin = c.author?.login || c.commit.author.name || 'unknown';
+      const authorLogin = c.author?.login || c.commit?.author?.name || c.commit?.committer?.name || 'unknown';
       const ctor = getOrCreateContributor(
         authorLogin,
         c.author?.avatar_url,
@@ -137,7 +158,8 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       ctor.linesAdded += estimatedAdded;
       ctor.linesDeleted += estimatedDeleted;
 
-      const dateObj = new Date(c.commit.author.date);
+      const fallbackCommitDate = parseSafeDate(c.commit?.committer?.date, new Date());
+      const dateObj = parseSafeDate(c.commit?.author?.date, fallbackCommitDate);
       const dateStr = dateObj.toISOString().split('T')[0];
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
@@ -159,10 +181,11 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       repoStat.linesChanged += estimatedAdded + estimatedDeleted;
 
       if (ctor.events.length < 100) {
+        const rawMessage = c.commit?.message || 'Commit';
         ctor.events.push({
-          id: `commit-${c.sha.substring(0, 7)}`,
+          id: `commit-${(c.sha || Math.random().toString(36)).substring(0, 7)}`,
           type: 'commit',
-          title: c.commit.message.split('\n')[0],
+          title: rawMessage.split('\n')[0] || 'Commit',
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
@@ -188,7 +211,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
         ctor.prsClosed++;
       }
 
-      const dateObj = new Date(pr.created_at);
+      const dateObj = parseSafeDate(pr.created_at);
       const dateStr = dateObj.toISOString().split('T')[0];
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
@@ -206,7 +229,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
         ctor.events.push({
           id: `pr-${pr.number}`,
           type: pr.merged_at ? 'pr_merged' : 'pr_opened',
-          title: `${pr.merged_at ? 'Merged' : 'Opened'} PR #${pr.number}: ${pr.title}`,
+          title: `${pr.merged_at ? 'Merged' : 'Opened'} PR #${pr.number}: ${pr.title || 'Untitled'}`,
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
@@ -227,7 +250,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       const ctor = getOrCreateContributor(rev.user.login);
       ctor.reviewsCount++;
 
-      const dateObj = new Date(rev.submitted_at || Date.now());
+      const dateObj = parseSafeDate(rev.submitted_at);
       const dateStr = dateObj.toISOString().split('T')[0];
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
@@ -240,7 +263,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
         ctor.events.push({
           id: `rev-${rev.id}`,
           type: 'review',
-          title: `Reviewed code on ${repoName} (${rev.state.toLowerCase()})`,
+          title: `Reviewed code on ${repoName} (${(rev.state || 'submitted').toLowerCase()})`,
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
@@ -259,7 +282,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
       const ctor = getOrCreateContributor(iss.user.login);
       ctor.issuesCount++;
 
-      const dateObj = new Date(iss.created_at);
+      const dateObj = parseSafeDate(iss.created_at);
       const dateStr = dateObj.toISOString().split('T')[0];
       ctor.activeDates.add(dateStr);
       ctor.activityByDate[dateStr] = (ctor.activityByDate[dateStr] || 0) + 1;
@@ -271,7 +294,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
         ctor.events.push({
           id: `iss-${iss.number}`,
           type: 'issue',
-          title: `Created Issue #${iss.number}: ${iss.title}`,
+          title: `Created Issue #${iss.number}: ${iss.title || 'Untitled'}`,
           repo: repoName,
           timestamp: dateObj.toLocaleDateString(),
           isoDate: dateObj.toISOString(),
@@ -353,7 +376,7 @@ export function aggregateOrgData(data: RawSyncData, orgName: string): {
 
     const committers = new Map<string, number>();
     for (const c of repoCommits) {
-      const login = c.author?.login || c.commit.author.name || 'unknown';
+      const login = c.author?.login || c.commit?.author?.name || c.commit?.committer?.name || 'unknown';
       committers.set(login, (committers.get(login) || 0) + 1);
     }
 

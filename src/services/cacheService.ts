@@ -5,6 +5,58 @@ const ORG_KEY = 'm2m_github_org';
 const EXCLUDED_REPOS_KEY = 'm2m_excluded_repos';
 const CACHE_DATA_KEY = 'm2m_cached_dashboard_data';
 const CACHE_TIMESTAMP_KEY = 'm2m_cache_timestamp';
+const CAPTCHA_KEY = 'm2m_captcha_verified_v1';
+
+// In-memory fallback state for environments where sessionStorage is disabled or throws
+let inMemoryToken = '';
+let inMemoryCaptcha = false;
+
+// One-time startup purge of legacy sensitive keys from persistent localStorage
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(CAPTCHA_KEY);
+  }
+} catch {
+  // Ignore storage restriction errors
+}
+
+function getSessionValue(key: string): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      return window.sessionStorage.getItem(key);
+    }
+  } catch {
+    // Fallback to memory
+  }
+  if (key === TOKEN_KEY) return inMemoryToken || null;
+  if (key === CAPTCHA_KEY) return inMemoryCaptcha ? 'true' : null;
+  return null;
+}
+
+function setSessionValue(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.setItem(key, value);
+    }
+  } catch {
+    // Fallback to memory
+  }
+  if (key === TOKEN_KEY) inMemoryToken = value;
+  if (key === CAPTCHA_KEY) inMemoryCaptcha = value === 'true';
+}
+
+function removeSessionValue(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.removeItem(key);
+    }
+  } catch {
+    // Fallback to memory
+  }
+  if (key === TOKEN_KEY) inMemoryToken = '';
+  if (key === CAPTCHA_KEY) inMemoryCaptcha = false;
+}
 
 export interface CachedDashboardPayload {
   contributors: ContributorStats[];
@@ -32,10 +84,10 @@ export const cacheService = {
     localStorage.setItem(EXCLUDED_REPOS_KEY, JSON.stringify(cleaned));
   },
 
-  // --- Token Management (Server Proxy default, localStorage optional override) ---
+  // --- Token Management (Server Proxy default, sessionStorage session override) ---
 
   getOverrideToken(): string {
-    return (localStorage.getItem(TOKEN_KEY) || '').trim();
+    return (getSessionValue(TOKEN_KEY) || '').trim();
   },
 
   hasTokenOverride(): boolean {
@@ -43,7 +95,7 @@ export const cacheService = {
   },
 
   clearTokenOverride(): void {
-    localStorage.removeItem(TOKEN_KEY);
+    removeSessionValue(TOKEN_KEY);
   },
 
   hasServerProxy(): boolean {
@@ -61,15 +113,21 @@ export const cacheService = {
   saveCredentials(credentials: GitHubCredentials): void {
     const cleanToken = credentials.token ? credentials.token.trim() : '';
     if (cleanToken) {
-      localStorage.setItem(TOKEN_KEY, cleanToken);
+      setSessionValue(TOKEN_KEY, cleanToken);
     } else {
-      localStorage.removeItem(TOKEN_KEY);
+      removeSessionValue(TOKEN_KEY);
     }
-    localStorage.setItem(ORG_KEY, credentials.org.trim());
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(ORG_KEY, credentials.org.trim());
+      }
+    } catch {
+      // Ignore storage errors
+    }
   },
 
   clearCredentials(): void {
-    localStorage.removeItem(TOKEN_KEY);
+    removeSessionValue(TOKEN_KEY);
   },
 
   // --- Cached Dashboard Data ---
@@ -113,17 +171,17 @@ export const cacheService = {
     localStorage.setItem('m2m_theme', theme);
   },
 
-  // --- Security Captcha Verification ---
+  // --- Security Captcha Verification (Session-scoped) ---
 
   isCaptchaVerified(): boolean {
-    return localStorage.getItem('m2m_captcha_verified_v1') === 'true';
+    return getSessionValue(CAPTCHA_KEY) === 'true';
   },
 
   setCaptchaVerified(verified: boolean = true): void {
     if (verified) {
-      localStorage.setItem('m2m_captcha_verified_v1', 'true');
+      setSessionValue(CAPTCHA_KEY, 'true');
     } else {
-      localStorage.removeItem('m2m_captcha_verified_v1');
+      removeSessionValue(CAPTCHA_KEY);
     }
   },
 

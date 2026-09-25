@@ -25,12 +25,17 @@ export interface RawRepo {
 export interface RawCommit {
   sha: string;
   commit: {
-    author: {
+    author?: {
       name: string;
       email: string;
       date: string;
     };
-    message: string;
+    committer?: {
+      name: string;
+      email: string;
+      date: string;
+    };
+    message?: string;
   };
   author: {
     login: string;
