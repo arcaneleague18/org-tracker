@@ -20,6 +20,7 @@ import { ContributorDetailModal } from './components/ContributorDetailModal';
 import { RepoBreakdown } from './components/RepoBreakdown';
 import { SettingsModal } from './components/SettingsModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
+import { SecurityGateModal } from './components/SecurityGateModal';
 
 const emptyOrgOverview: OrgOverview = {
   orgName: 'Move2Move',
@@ -70,6 +71,21 @@ export const App: React.FC = () => {
   const [selectedContributor, setSelectedContributor] = useState<ContributorStats | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Security Gate / First-Time Captcha
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState<boolean>(() => cacheService.isCaptchaVerified());
+  const [isSecurityGateOpen, setIsSecurityGateOpen] = useState<boolean>(() => !cacheService.isCaptchaVerified());
+
+  const handleCaptchaVerified = useCallback(() => {
+    cacheService.setCaptchaVerified(true);
+    setIsCaptchaVerified(true);
+    setIsSecurityGateOpen(false);
+  }, []);
+
+  const handleOpenSecurityGate = useCallback(() => {
+    setIsSecurityGateOpen(true);
+  }, []);
+
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isSyncing: false,
@@ -647,6 +663,15 @@ export const App: React.FC = () => {
           <div className="footer-meta-right">
             <button
               type="button"
+              onClick={handleOpenSecurityGate}
+              className="footer-link-tactical"
+              title="Identity & Hardware Security Gateway (Poké Claw Captcha)"
+            >
+              {isCaptchaVerified ? '[SECURITY: VERIFIED]' : '[SECURITY: GATE_ACTIVE]'}
+            </button>
+            <span className="footer-pipe">|</span>
+            <button
+              type="button"
               onClick={() => setIsSettingsOpen(true)}
               className="footer-link-tactical"
             >
@@ -665,6 +690,14 @@ export const App: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* First-Time Access Control Security Gate (Claw Machine Captcha) */}
+      <SecurityGateModal
+        isOpen={isSecurityGateOpen}
+        onVerified={handleCaptchaVerified}
+        onDismiss={isCaptchaVerified ? () => setIsSecurityGateOpen(false) : undefined}
+        allowBypass={isCaptchaVerified}
+      />
 
       {/* Declassified Contributor Dossier Modal */}
       {selectedContributor && (
@@ -689,6 +722,7 @@ export const App: React.FC = () => {
 
       {/* Syncing Modal */}
       <SyncProgressModal status={syncStatus} />
+
 
       <style>{`
         .app-tactical-root {

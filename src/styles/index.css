@@ -1,3 +1,5 @@
+@import './clawcaptcha.css';
+
 :root {
   --font-macro: 'Archivo Black', -apple-system, sans-serif;
   --font-mono: 'Space Mono', 'JetBrains Mono', monospace;
@@ -43,14 +45,14 @@ body.theme-light {
   --border-hazard: #e61919;
 }
 
-/* Strict Mechanical Rigidity: Absolute Rejection of Rounded Corners */
+/* Strict Mechanical Rigidity: Absolute Rejection of Rounded Corners (default) */
 *,
 *::before,
 *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  border-radius: 0 !important;
+  border-radius: 0;
 }
 
 html {

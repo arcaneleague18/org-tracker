@@ -113,6 +113,20 @@ export const cacheService = {
     localStorage.setItem('m2m_theme', theme);
   },
 
+  // --- Security Captcha Verification ---
+
+  isCaptchaVerified(): boolean {
+    return localStorage.getItem('m2m_captcha_verified_v1') === 'true';
+  },
+
+  setCaptchaVerified(verified: boolean = true): void {
+    if (verified) {
+      localStorage.setItem('m2m_captcha_verified_v1', 'true');
+    } else {
+      localStorage.removeItem('m2m_captcha_verified_v1');
+    }
+  },
+
   // --- Cache Clear ---
 
   clearCache(): void {
@@ -120,3 +134,4 @@ export const cacheService = {
     localStorage.removeItem(CACHE_TIMESTAMP_KEY);
   }
 };
+
