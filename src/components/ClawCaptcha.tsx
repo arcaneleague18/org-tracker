@@ -76,7 +76,12 @@ function scatterPile(target: string, set: Array<{ toy: string; w: number }>): Sl
 
   const nB = Math.min(7, order.length - 1);
   const nTop = order.length - nB;
-  const bottomIdx = 2 + Math.floor(Math.random() * (nB - 4));
+  // Ensure the target pokemon spawns away from the center (where the claw rests at GW/2).
+  // Distribute target across outer flanks (left: 0, 1; right: nB-2, nB-1) so the player must steer to reach it.
+  const outerCandidates = [0, 1, nB - 2, nB - 1].filter((idx) => idx >= 0 && idx < nB);
+  const bottomIdx = outerCandidates.length > 0
+    ? outerCandidates[Math.floor(Math.random() * outerCandidates.length)]
+    : 0;
   const slots: Slot[] = new Array(order.length);
 
   let r = 0;
