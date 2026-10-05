@@ -1,0 +1,135 @@
+name: Sync Replica to Personal Account
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+  delete:
+  workflow_dispatch:
+
+concurrency:
+  group: sync-to-personal-repo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Mirror Repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Replicate to Personal Private Repository
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          CUSTOM_TARGET_REPO: ${{ vars.PERSONAL_TARGET_REPO }}
+          SOURCE_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -e
+
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::PERSONAL_ACCESS_TOKEN secret is not set!"
+            echo "Please create a GitHub Personal Access Token (Classic) on your personal account with 'repo' and 'workflow' scopes."
+            echo "Then add it to this repository's Settings -> Secrets and variables -> Actions -> New repository secret named PERSONAL_ACCESS_TOKEN."
+            exit 1
+          fi
+
+          # Get authenticated personal username
+          echo "Authenticating with personal account token..."
+          PERSONAL_USER=$(curl -s -f \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/user | jq -r .login)
+
+          if [ -z "$PERSONAL_USER" ] || [ "$PERSONAL_USER" = "null" ]; then
+            echo "::error::Failed to fetch user details from GitHub API. Please verify PERSONAL_ACCESS_TOKEN validity."
+            exit 1
+          fi
+
+          echo "Authenticated personal user: $PERSONAL_USER"
+
+          # Determine target repository name
+          SOURCE_REPO_NAME="${SOURCE_REPO##*/}"
+          if [ -n "$CUSTOM_TARGET_REPO" ]; then
+            if [[ "$CUSTOM_TARGET_REPO" == *"/"* ]]; then
+              TARGET_REPO="$CUSTOM_TARGET_REPO"
+            else
+              TARGET_REPO="$PERSONAL_USER/$CUSTOM_TARGET_REPO"
+            fi
+          else
+            TARGET_REPO="$PERSONAL_USER/$SOURCE_REPO_NAME"
+          fi
+
+          echo "Target personal repository: $TARGET_REPO"
+
+          # Avoid self-sync loop if running on target repository
+          if [ "$SOURCE_REPO" = "$TARGET_REPO" ]; then
+            echo "Source and target repositories are the same ($SOURCE_REPO). Skipping sync."
+            exit 0
+          fi
+
+          # Check if target repository exists; create it as private if not
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$TARGET_REPO")
+
+          TARGET_REPO_NAME="${TARGET_REPO##*/}"
+
+          if [ "$HTTP_STATUS" -eq 404 ]; then
+            echo "Repository $TARGET_REPO does not exist. Creating private repository..."
+            CREATE_RES=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/user/repos \
+              -d "{\"name\":\"$TARGET_REPO_NAME\",\"private\":true}")
+
+            CREATE_CODE=$(echo "$CREATE_RES" | tail -n1)
+            if [ "$CREATE_CODE" -ne 201 ]; then
+              echo "::error::Failed to create repository $TARGET_REPO. HTTP status: $CREATE_CODE"
+              echo "$CREATE_RES" | sed '$d'
+              exit 1
+            fi
+            echo "Successfully created private repository $TARGET_REPO."
+            sleep 3
+          elif [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "Repository $TARGET_REPO already exists."
+          else
+            echo "::error::Unexpected status $HTTP_STATUS checking repository $TARGET_REPO."
+            exit 1
+          fi
+
+          # Mirror clone the source repository
+          echo "Cloning source repository ($SOURCE_REPO)..."
+          git clone --mirror "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${SOURCE_REPO}.git" repo.git
+          cd repo.git
+
+          # Configure remote for the target personal repository
+          git remote add target "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git"
+
+          # Push all branches to target repository
+          echo "Syncing all branches to $TARGET_REPO..."
+          git push --prune target '+refs/heads/*:refs/heads/*'
+
+          # Push all tags if any exist
+          if [ -n "$(git tag -l)" ]; then
+            echo "Syncing tags to $TARGET_REPO..."
+            git push --prune target '+refs/tags/*:refs/tags/*'
+          else
+            echo "No tags found to sync."
+          fi
+
+          # Align default branch on target repository with source repository
+          if [ -n "$DEFAULT_BRANCH" ]; then
+            echo "Aligning default branch to '$DEFAULT_BRANCH'..."
+            curl -s -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$TARGET_REPO" \
+              -d "{\"default_branch\":\"$DEFAULT_BRANCH\"}" > /dev/null || true
+          fi
+
+          echo "Sync completed successfully."
