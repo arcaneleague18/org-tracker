@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ContributorStats } from '../types';
 import { ArrowUpRightIcon } from './Icons';
+import { PointHistoryModal } from './PointHistoryModal';
 
 interface ContributorLeaderboardProps {
   contributors: ContributorStats[];
@@ -17,6 +18,7 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
   const [sortField, setSortField] = useState<SortField>('impactScore');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [pointHistoryContributor, setPointHistoryContributor] = useState<ContributorStats | null>(null);
 
   const filteredAndSorted = useMemo(() => {
     return contributors
@@ -193,9 +195,19 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
                       </div>
                     </div>
                   </td>
-                  <td className="td-impact">
+                  <td
+                    className="td-impact td-impact-clickable"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPointHistoryContributor(c);
+                    }}
+                    title="CLICK TO INSPECT POINT HISTORY & SCORING AUDIT"
+                  >
                     <div className="impact-indicator">
-                      <span className="impact-number">{c.impactScore}</span>
+                      <div className="impact-header-row">
+                        <span className="impact-number">{c.impactScore}</span>
+                        <span className="impact-hist-badge font-mono">[HIST]</span>
+                      </div>
                       <div className="impact-ascii-bar">
                         <div
                           className="impact-ascii-fill"
@@ -281,10 +293,20 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
                 </div>
               </div>
 
-              <div className="card-score-telemetry">
+              <div
+                className="card-score-telemetry card-score-clickable"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPointHistoryContributor(c);
+                }}
+                title="CLICK TO INSPECT POINT HISTORY & SCORING AUDIT"
+              >
                 <div className="score-label-row">
                   <span>IMPACT_COEFFICIENT:</span>
-                  <span className="score-val-large">{c.impactScore}</span>
+                  <div className="score-val-wrap">
+                    <span className="score-val-large">{c.impactScore}</span>
+                    <span className="score-hist-tag font-mono">[POINT_HISTORY ↗]</span>
+                  </div>
                 </div>
                 <div className="card-score-track">
                   <div
@@ -330,6 +352,18 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
             </div>
           ))}
         </div>
+      )}
+
+      {pointHistoryContributor && (
+        <PointHistoryModal
+          contributor={pointHistoryContributor}
+          allContributors={contributors}
+          onClose={() => setPointHistoryContributor(null)}
+          onOpenDossier={(c) => {
+            setPointHistoryContributor(null);
+            onSelectContributor(c);
+          }}
+        />
       )}
 
       <style>{`
@@ -524,6 +558,7 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
         .impact-number {
           font-weight: 700;
           color: var(--text-phosphor);
+          transition: color 0.15s ease;
         }
         .impact-ascii-bar {
           width: 100%;
@@ -533,6 +568,67 @@ export const ContributorLeaderboard: React.FC<ContributorLeaderboardProps> = ({
         .impact-ascii-fill {
           height: 100%;
           background: var(--text-phosphor);
+          transition: background 0.15s ease;
+        }
+        .td-impact-clickable {
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .td-impact-clickable:hover {
+          background: rgba(74, 246, 38, 0.08);
+        }
+        .td-impact-clickable:hover .impact-number {
+          color: var(--accent-radar);
+        }
+        .td-impact-clickable:hover .impact-ascii-fill {
+          background: var(--accent-radar);
+        }
+        .td-impact-clickable:hover .impact-hist-badge {
+          border-color: var(--accent-radar);
+          color: var(--accent-radar);
+          background: rgba(74, 246, 38, 0.12);
+        }
+        .impact-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.25rem;
+        }
+        .impact-hist-badge {
+          font-size: 0.58rem;
+          color: var(--text-ghost);
+          border: 1px solid var(--border-tactical);
+          background: var(--bg-crt);
+          padding: 1px 3px;
+          line-height: 1;
+          letter-spacing: 0.05em;
+          transition: all 0.15s ease;
+        }
+        .card-score-clickable {
+          cursor: pointer;
+          padding: 0.35rem;
+          margin: -0.35rem;
+          border: 1px dashed transparent;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        .card-score-clickable:hover {
+          border-color: var(--accent-radar);
+          background: rgba(74, 246, 38, 0.05);
+        }
+        .card-score-clickable:hover .score-val-large {
+          color: var(--accent-radar);
+        }
+        .score-val-wrap {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .score-hist-tag {
+          font-size: 0.62rem;
+          color: var(--accent-radar);
+          border: 1px solid rgba(74, 246, 38, 0.3);
+          background: rgba(74, 246, 38, 0.1);
+          padding: 2px 6px;
         }
         .num-highlight {
           font-weight: 700;

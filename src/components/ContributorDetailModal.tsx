@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ContributorStats, ActivityEvent } from '../types';
 import { ArrowUpRightIcon } from './Icons';
+import { PointHistoryModal } from './PointHistoryModal';
 
 interface ContributorDetailModalProps {
   contributor: ContributorStats | null;
@@ -38,10 +39,12 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [hoveredDay, setHoveredDay] = useState<CalendarDay | null>(null);
+  const [showPointHistory, setShowPointHistory] = useState(false);
 
   useEffect(() => {
     setSelectedDate(null);
     setHoveredDay(null);
+    setShowPointHistory(false);
   }, [contributor?.login]);
 
   useEffect(() => {
@@ -370,7 +373,15 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
               </div>
               <div className="dossier-titles">
                 <div className="dossier-rank-badge">
-                  [ UNIT_RANK_#0{contributor.rank} // CLEARANCE: {contributor.role.toUpperCase()} ]
+                  <span>[ UNIT_RANK_#0{contributor.rank} // CLEARANCE: {contributor.role.toUpperCase()} ]</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPointHistory(true)}
+                    className="btn-tactical btn-dossier-point-history"
+                    title="INSPECT POINT ACCUMULATION HISTORY & FORMULA MATRIX"
+                  >
+                    [IMPACT_IDX: {contributor.impactScore} // POINT_HISTORY ↗]
+                  </button>
                 </div>
                 <h3 className="macro-title dossier-person-name">{contributor.name}</h3>
                 <div className="dossier-links-row">
@@ -1185,7 +1196,30 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             font-size: 0.62rem;
           }
         }
+
+        .btn-dossier-point-history {
+          font-size: 0.65rem;
+          padding: 0.2rem 0.5rem;
+          background: rgba(74, 246, 38, 0.1);
+          color: var(--accent-radar);
+          border-color: rgba(74, 246, 38, 0.4);
+          margin-left: 0.5rem;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-dossier-point-history:hover {
+          background: var(--accent-radar);
+          color: #000;
+          border-color: var(--accent-radar);
+        }
       `}</style>
+
+      {showPointHistory && (
+        <PointHistoryModal
+          contributor={contributor}
+          onClose={() => setShowPointHistory(false)}
+        />
+      )}
     </div>
   );
 };

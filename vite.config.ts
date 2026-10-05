@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
           }
           interface CachedResponse {
             status: number;
-            body: Buffer;
+            body: any;
             contentType: string;
             rateLimitHeaders: Record<string, string>;
             expiresAt: number;
