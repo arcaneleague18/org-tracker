@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ContributorStats, ActivityEvent } from '../types';
 import { ArrowUpRightIcon } from './Icons';
 import { PointHistoryModal } from './PointHistoryModal';
@@ -40,11 +40,19 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [hoveredDay, setHoveredDay] = useState<CalendarDay | null>(null);
   const [showPointHistory, setShowPointHistory] = useState(false);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedDate(null);
     setHoveredDay(null);
     setShowPointHistory(false);
+    // Auto-scroll timeline to the latest week on mount / contributor switch
+    const timer = setTimeout(() => {
+      if (timelineScrollRef.current) {
+        timelineScrollRef.current.scrollLeft = timelineScrollRef.current.scrollWidth;
+      }
+    }, 60);
+    return () => clearTimeout(timer);
   }, [contributor?.login]);
 
   useEffect(() => {
@@ -353,7 +361,7 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-dialog-tactical with-crosshairs font-mono" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-dialog-tactical dossier-dialog with-crosshairs font-mono" onClick={(e) => e.stopPropagation()}>
         <div className="hazard-stripe" />
         <div className="modal-inner-padding">
           {/* Header */}
@@ -372,18 +380,12 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                 />
               </div>
               <div className="dossier-titles">
-                <div className="dossier-rank-badge">
-                  <span>[ UNIT_RANK_#0{contributor.rank} // CLEARANCE: {contributor.role.toUpperCase()} ]</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowPointHistory(true)}
-                    className="btn-tactical btn-dossier-point-history"
-                    title="INSPECT POINT ACCUMULATION HISTORY & FORMULA MATRIX"
-                  >
-                    [IMPACT_IDX: {contributor.impactScore} // POINT_HISTORY ↗]
+                <div className="dossier-name-row">
+                  <h3 className="macro-title dossier-person-name">{contributor.name}</h3>
+                  <button type="button" onClick={onClose} className="btn-tactical btn-close-modal btn-close-mobile">
+                    [X / CLOSE]
                   </button>
                 </div>
-                <h3 className="macro-title dossier-person-name">{contributor.name}</h3>
                 <div className="dossier-links-row">
                   <span className="dossier-handle">HANDLE: @{contributor.login}</span>
                   <span className="sep-slash">/</span>
@@ -397,10 +399,23 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                     <ArrowUpRightIcon size={10} />
                   </a>
                 </div>
+                <div className="dossier-badges-row">
+                  <span className="dossier-rank-badge">
+                    [ UNIT_RANK_#0{contributor.rank} // CLEARANCE: {contributor.role.toUpperCase()} ]
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPointHistory(true)}
+                    className="btn-tactical btn-dossier-point-history"
+                    title="INSPECT POINT ACCUMULATION HISTORY & FORMULA MATRIX"
+                  >
+                    [IMPACT_IDX: {contributor.impactScore} // POINT_HISTORY ↗]
+                  </button>
+                </div>
               </div>
             </div>
 
-            <button type="button" onClick={onClose} className="btn-tactical btn-close-modal">
+            <button type="button" onClick={onClose} className="btn-tactical btn-close-modal btn-close-desktop">
               [ESC / CLOSE]
             </button>
           </div>
@@ -512,8 +527,13 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
             </div>
 
             <div className="dossier-timeline-console">
+              {/* Mobile Swipe Hint */}
+              <div className="mobile-swipe-hint font-mono">
+                <span>&lt;&lt;&lt; SWIPE TIMELINE HORIZONTALLY &gt;&gt;&gt;</span>
+              </div>
+
               {/* Scrollable 53-week Canvas */}
-              <div className="dossier-timeline-scroll">
+              <div className="dossier-timeline-scroll" ref={timelineScrollRef}>
                 <div className="dossier-timeline-inner">
                   {/* Months Header Track */}
                   <div className="months-header-row">
@@ -565,7 +585,9 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
                                 }
                                 onClick={() => {
                                   if (day.isFuture) return;
-                                  setSelectedDate(selectedDate === day.date ? null : day.date);
+                                  const isSelected = selectedDate === day.date;
+                                  setSelectedDate(isSelected ? null : day.date);
+                                  setHoveredDay(isSelected ? null : day);
                                 }}
                                 onMouseEnter={() => !day.isFuture && setHoveredDay(day)}
                                 onMouseLeave={() => setHoveredDay(null)}
@@ -663,16 +685,29 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
               ) : (
                 filteredEvents.map((event) => (
                   <div key={event.id} className="log-item">
-                    <span className="log-type-tag">
-                      [{event.type.toUpperCase()}]
-                    </span>
+                    <div className="log-item-meta">
+                      <span className="log-type-tag">
+                        [{event.type.toUpperCase()}]
+                      </span>
+                      <span className="log-repo">@{event.repo}</span>
+                    </div>
                     <span className="log-desc">{event.title}</span>
-                    <span className="log-repo">@{event.repo}</span>
                     <span className="log-time">{event.timestamp}</span>
                   </div>
                 ))
               )}
             </div>
+          </div>
+
+          {/* Mobile Footer Exit Control */}
+          <div className="dossier-mobile-footer font-mono">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-tactical btn-mobile-close"
+            >
+              [CLOSE PERSONNEL DOSSIER]
+            </button>
           </div>
         </div>
       </div>
@@ -1171,20 +1206,62 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           padding: 1rem 0;
         }
 
+        .dossier-name-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+        .btn-close-mobile {
+          display: none;
+        }
+        .btn-close-desktop {
+          display: inline-flex;
+        }
+        .dossier-badges-row {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+          margin-top: 0.25rem;
+        }
+        .btn-dossier-point-history {
+          font-size: 0.65rem;
+          padding: 0.2rem 0.5rem;
+          background: rgba(74, 246, 38, 0.1);
+          color: var(--accent-radar);
+          border-color: rgba(74, 246, 38, 0.4);
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-dossier-point-history:hover {
+          background: var(--accent-radar);
+          color: #000;
+          border-color: var(--accent-radar);
+        }
+        .log-item-meta {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+        .dossier-mobile-footer {
+          display: none;
+        }
+        .mobile-swipe-hint {
+          display: none;
+        }
+
+        /* Responsive Tablet & Mobile Media Queries */
         @media (max-width: 768px) {
           .modal-inner-padding {
-            padding: 1rem 0.75rem;
-            gap: 1rem;
+            padding: 1.15rem 0.85rem;
+            gap: 1.15rem;
           }
           .dossier-metrics-grid {
             grid-template-columns: repeat(2, 1fr);
           }
           .dossier-timeline-console {
             padding: 0.75rem 0.5rem;
-          }
-          .dossier-timeline-pills {
-            gap: 0.3rem;
-            width: 100%;
           }
           .timeline-footer-row {
             flex-direction: column;
@@ -1197,20 +1274,262 @@ export const ContributorDetailModal: React.FC<ContributorDetailModalProps> = ({
           }
         }
 
-        .btn-dossier-point-history {
-          font-size: 0.65rem;
-          padding: 0.2rem 0.5rem;
-          background: rgba(74, 246, 38, 0.1);
-          color: var(--accent-radar);
-          border-color: rgba(74, 246, 38, 0.4);
-          margin-left: 0.5rem;
-          display: inline-flex;
-          align-items: center;
+        @media (max-width: 640px) {
+          .modal-overlay {
+            padding: 0 !important;
+            align-items: flex-end;
+          }
+          .dossier-dialog {
+            max-width: 100% !important;
+            max-height: 100vh !important;
+            height: 100vh !important;
+            border-left: none !important;
+            border-right: none !important;
+            border-top: none !important;
+            border-bottom: none !important;
+            box-shadow: none !important;
+            display: flex;
+            flex-direction: column;
+          }
+          .modal-inner-padding {
+            padding: 0.85rem 0.75rem calc(1.75rem + env(safe-area-inset-bottom, 0px)) !important;
+            gap: 1rem !important;
+            flex: 1;
+          }
+
+          /* Mobile Header */
+          .dossier-modal-header {
+            padding-bottom: 0.75rem;
+          }
+          .dossier-identity-left {
+            gap: 0.65rem;
+            width: 100%;
+            align-items: flex-start;
+          }
+          .dossier-avatar-container {
+            width: 2.75rem;
+            height: 2.75rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+          }
+          .dossier-titles {
+            width: 100%;
+            min-width: 0;
+            gap: 0.2rem;
+          }
+          .dossier-person-name {
+            font-size: 1.15rem;
+            word-break: break-word;
+          }
+          .btn-close-desktop {
+            display: none !important;
+          }
+          .btn-close-mobile {
+            display: inline-flex !important;
+            font-size: 0.62rem;
+            padding: 0.2rem 0.45rem;
+            border-color: var(--accent-hazard);
+            color: var(--accent-hazard);
+            flex-shrink: 0;
+          }
+          .dossier-links-row {
+            font-size: 0.65rem;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+          }
+          .dossier-handle {
+            word-break: break-all;
+          }
+          .dossier-badges-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.35rem;
+            margin-top: 0.35rem;
+            width: 100%;
+          }
+          .dossier-rank-badge {
+            font-size: 0.6rem;
+            word-break: break-all;
+          }
+          .btn-dossier-point-history {
+            width: 100%;
+            justify-content: center;
+            padding: 0.35rem 0.5rem;
+            font-size: 0.62rem;
+            box-sizing: border-box;
+          }
+
+          /* Metrics Grid on Mobile */
+          .dossier-metrics-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 1px;
+          }
+          .metric-cell {
+            padding: 0.6rem 0.5rem !important;
+            gap: 0.2rem;
+          }
+          .dm-label {
+            font-size: 0.56rem !important;
+            letter-spacing: 0.04em;
+          }
+          .dm-val {
+            font-size: 1.3rem !important;
+          }
+          .dm-sub {
+            font-size: 0.55rem !important;
+            line-height: 1.2;
+          }
+          .dm-churn-row {
+            flex-direction: column;
+            gap: 0.15rem;
+            font-size: 0.72rem;
+          }
+
+          /* Repository Footprint on Mobile */
+          .footprint-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.15rem;
+            font-size: 0.68rem;
+          }
+          .footprint-repo-name {
+            word-break: break-all;
+          }
+          .footprint-counts {
+            font-size: 0.62rem;
+          }
+
+          /* Timeline Section on Mobile */
+          .section-title-strip.flex-between {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.45rem;
+          }
+          .timeline-title-left {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            font-size: 0.65rem;
+          }
+          .dossier-timeline-pills {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            width: 100% !important;
+            gap: 0.35rem !important;
+          }
+          .telemetry-data-block {
+            justify-content: space-between;
+            padding: 0.3rem 0.45rem !important;
+            font-size: 0.6rem !important;
+          }
+          .mobile-swipe-hint {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.58rem;
+            color: var(--accent-radar);
+            background: var(--accent-radar-dim);
+            border: 1px dashed rgba(74, 246, 38, 0.4);
+            padding: 0.25rem 0.5rem;
+            margin-bottom: 0.35rem;
+            letter-spacing: 0.05em;
+          }
+          .dossier-timeline-console {
+            padding: 0.65rem 0.5rem !important;
+          }
+          .matrix-cell {
+            width: 12px !important;
+            height: 12px !important;
+          }
+          .timeline-telemetry-hud {
+            padding: 0.35rem 0.5rem !important;
+            font-size: 0.62rem !important;
+            min-height: auto !important;
+          }
+          .hud-content {
+            font-size: 0.62rem !important;
+            gap: 0.35rem !important;
+          }
+
+          /* Action Log on Mobile */
+          .action-log-header-strip {
+            flex-wrap: wrap;
+            gap: 0.35rem;
+          }
+          .action-log-stream {
+            max-height: 240px;
+            padding: 0.5rem;
+          }
+          .log-item {
+            display: grid !important;
+            grid-template-columns: 1fr auto !important;
+            gap: 0.2rem 0.5rem !important;
+            padding: 0.45rem 0 !important;
+          }
+          .log-item-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 0;
+          }
+          .log-type-tag {
+            font-size: 0.6rem;
+            flex-shrink: 0;
+          }
+          .log-repo {
+            font-size: 0.6rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .log-time {
+            font-size: 0.6rem;
+            text-align: right;
+            flex-shrink: 0;
+          }
+          .log-desc {
+            grid-column: 1 / -1 !important;
+            font-size: 0.68rem !important;
+            line-height: 1.3;
+            white-space: normal !important;
+            word-break: break-word;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+          }
+
+          /* Mobile Footer */
+          .dossier-mobile-footer {
+            display: block !important;
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px dashed var(--border-tactical);
+            width: 100%;
+          }
+          .btn-mobile-close {
+            width: 100%;
+            padding: 0.6rem;
+            font-size: 0.72rem;
+            background: var(--bg-crt);
+            border-color: var(--accent-hazard);
+            color: var(--accent-hazard);
+          }
+          .btn-mobile-close:hover,
+          .btn-mobile-close:active {
+            background: var(--accent-hazard);
+            color: #fff;
+          }
         }
-        .btn-dossier-point-history:hover {
-          background: var(--accent-radar);
-          color: #000;
-          border-color: var(--accent-radar);
+
+        @media (max-width: 380px) {
+          .dossier-timeline-pills {
+            grid-template-columns: 1fr !important;
+          }
+          .dossier-metrics-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
 

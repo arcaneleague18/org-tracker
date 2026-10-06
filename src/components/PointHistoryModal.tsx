@@ -1420,6 +1420,53 @@ export const PointHistoryModal: React.FC<PointHistoryModalProps> = ({
           display: flex;
           gap: 0.5rem;
         }
+
+        @media (max-width: 640px) {
+          .point-history-dialog {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            border-left: none !important;
+            border-right: none !important;
+            border-top: none !important;
+            border-bottom: none !important;
+            display: flex;
+            flex-direction: column;
+          }
+          .point-history-inner {
+            padding: 0.85rem 0.75rem calc(1.75rem + env(safe-area-inset-bottom, 0px)) !important;
+            gap: 1rem !important;
+            flex: 1;
+          }
+          .ph-modal-header {
+            gap: 0.5rem;
+            padding-bottom: 0.75rem;
+          }
+          .ph-avatar-box {
+            width: 44px;
+            height: 44px;
+          }
+          .ph-name {
+            font-size: 1.15rem;
+          }
+          .ph-tabs-left {
+            width: 100%;
+          }
+          .ph-tab-btn {
+            font-size: 0.62rem;
+            padding: 0.35rem 0.45rem;
+            flex: 1;
+            text-align: center;
+          }
+          .ph-footer-buttons {
+            width: 100%;
+            flex-direction: column;
+          }
+          .ph-footer-buttons button {
+            width: 100%;
+          }
+        }
       `}</style>
     </div>
   );
