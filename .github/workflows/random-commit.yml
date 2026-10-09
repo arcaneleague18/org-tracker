@@ -1,0 +1,105 @@
+name: Create Random Commit
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to commit to.'
+        required: false
+        default: ''
+        type: string
+      author_email:
+        description: 'Author email for the commit'
+        required: false
+        default: 'erenyeager4m@gmail.com'
+        type: string
+
+jobs:
+  random-commit:
+    name: Make Random Commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate Secret
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::PERSONAL_ACCESS_TOKEN secret is not set!"
+            echo "Please add your Personal Access Token to Settings -> Secrets and variables -> Actions -> New repository secret named PERSONAL_ACCESS_TOKEN."
+            exit 1
+          fi
+
+      - name: Determine Branch
+        id: branch_info
+        run: |
+          TARGET_BRANCH="${{ inputs.branch }}"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+          echo "Selected branch: $TARGET_BRANCH"
+          echo "branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.branch_info.outputs.branch }}
+          fetch-depth: 1
+
+      - name: Configure Personal User Git Identity
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          INPUT_EMAIL: ${{ inputs.author_email }}
+        run: |
+          set -e
+          USER_DATA=$(curl -s -f \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/user)
+
+          USERNAME=$(echo "$USER_DATA" | jq -r .login)
+          USER_NAME=$(echo "$USER_DATA" | jq -r '.name // .login')
+          USER_ID=$(echo "$USER_DATA" | jq -r .id)
+
+          USER_EMAIL="$INPUT_EMAIL"
+          if [ -z "$USER_EMAIL" ]; then
+            USER_EMAIL=$(curl -s -f \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/user/emails 2>/dev/null | jq -r '.[] | select(.primary == true) | .email' 2>/dev/null || true)
+          fi
+
+          if [ -z "$USER_EMAIL" ] || [ "$USER_EMAIL" = "null" ]; then
+            USER_EMAIL=$(echo "$USER_DATA" | jq -r '.email // empty')
+          fi
+
+          if [ -z "$USER_EMAIL" ] || [ "$USER_EMAIL" = "null" ]; then
+            USER_EMAIL="erenyeager4m@gmail.com"
+          fi
+
+          echo "Configuring git author as $USER_NAME <$USER_EMAIL> (@$USERNAME)"
+          git config user.name "$USER_NAME"
+          git config user.email "$USER_EMAIL"
+
+      - name: Make Random Modification in README.md
+        run: |
+          set -e
+          if [ ! -f "README.md" ]; then
+            echo "# README " > README.md
+          else
+            python3 -c "f = open('README.md', 'r+', encoding='utf-8'); t = f.read(); f.seek(0); f.write(t[:-1] if t.endswith(' ') else t + ' '); f.truncate(); f.close()"
+          fi
+
+      - name: Commit and Push
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          TARGET_BRANCH: ${{ steps.branch_info.outputs.branch }}
+        run: |
+          set -e
+          git add README.md
+          git commit -m "THE RANDOM COMMIT!!!"
+          echo "Pushing commit to branch $TARGET_BRANCH using personal access token..."
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:${TARGET_BRANCH}"
+          echo "Random commit pushed successfully."
